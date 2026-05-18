@@ -1,0 +1,65 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  medicines Medicine[]
+}
+
+model Medicine {
+  id            String   @id @default(uuid())
+  name          String
+  genericFormula String
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id])
+  barcode       String?  @unique
+  minStockLevel Int      @default(10)
+  rackLocation  String?
+  batches       Batch[]
+  saleItems     SaleItem[]
+  createdAt     DateTime @default(now())
+}
+
+model Batch {
+  id            String   @id @default(uuid())
+  medicineId    String
+  medicine      Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  batchNumber   String
+  expiryDate    DateTime
+  purchasePrice Float
+  retailPrice   Float
+  quantity      Int
+  saleItems     SaleItem[]
+  createdAt     DateTime @default(now())
+}
+
+model Sale {
+  id        String     @id @default(uuid())
+  total     Float
+  createdAt DateTime   @default(now())
+  items     SaleItem[]
+}
+
+model SaleItem {
+  id         String   @id @default(uuid())
+  saleId     String
+  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  medicineId String
+  medicine   Medicine @relation(fields: [medicineId], references: [id])
+  batchId    String
+  batch      Batch    @relation(fields: [batchId], references: [id])
+  quantity   Int
+  price      Float
+}
