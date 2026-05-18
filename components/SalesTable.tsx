@@ -26,6 +26,7 @@ export default function SalesTable({ items }: { items: any[] }) {
               <th className="p-4 font-bold text-center">Batch</th>
               <th className="p-4 font-bold text-center">Qty</th>
               <th className="p-4 font-bold text-right">Unit Price</th>
+              <th className="p-4 font-bold text-center">Unit</th>
               <th className="p-4 font-bold text-right text-emerald-600">Revenue</th>
               <th className="p-4 font-bold text-right text-blue-600">Profit</th>
             </tr>
@@ -45,8 +46,9 @@ export default function SalesTable({ items }: { items: any[] }) {
                     {item.batchNumber}
                   </span>
                 </td>
-                <td className="p-4 text-center font-bold text-slate-700">{item.quantity}</td>
-                <td className="p-4 text-right text-slate-600">Rs. {item.salePrice.toFixed(2)}</td>
+                <td className="p-4 text-center font-bold text-slate-700">{item.displayQuantity || item.quantity}</td>
+                <td className="p-4 text-right text-slate-600">Rs. {(item.unitPrice || item.salePrice).toFixed(2)}</td>
+                <td className="p-4 text-center text-slate-600 font-medium">{item.unit || '-'}</td>
                 <td className="p-4 text-right font-bold text-emerald-600">
                   Rs. {item.revenue.toFixed(2)}
                 </td>

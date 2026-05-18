@@ -27,6 +27,9 @@ model Medicine {
   barcode       String?  @unique
   minStockLevel Int      @default(10)
   rackLocation  String?
+  stripsPerBox  Int      @map("strips_per_box") @default(1)
+  tabletsPerStrip Int?
+  defaultSellingUnit String @default("BOX")
   batches       Batch[]
   saleItems     SaleItem[]
   createdAt     DateTime @default(now())
@@ -40,6 +43,7 @@ model Batch {
   expiryDate    DateTime
   purchasePrice Float
   retailPrice   Float
+  // `quantity` represents total smallest-selling-units for this batch (e.g. strips)
   quantity      Int
   saleItems     SaleItem[]
   createdAt     DateTime @default(now())
@@ -61,5 +65,6 @@ model SaleItem {
   batchId    String
   batch      Batch    @relation(fields: [batchId], references: [id])
   quantity   Int
+  unit       String   @default("STRIP")
   price      Float
 }

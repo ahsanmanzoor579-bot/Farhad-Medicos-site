@@ -51,13 +51,18 @@ const ReceiptPrinter = forwardRef<HTMLDivElement, ReceiptProps>(({ cart, total, 
       <div className="w-full text-[15px]">
         {cart.map((item, index) => {
           const name = item.name || item.medicineName;
-          const displayPrice = (item.price || item.batchPrice) * item.quantity;
+          const unitPrice = item.unitPrice || item.batchPrice || item.price || 0;
+          const displayQty = item.unit === 'BOX' ? `${item.quantity} box(es)` : `${item.quantity} strip(s)`;
+          const displayPrice = unitPrice * item.quantity;
           return (
             <div key={index} className="flex justify-between items-start mb-1.5">
               <span className="max-w-[50mm] break-words pr-2">
-                {name} {item.quantity > 1 ? `(x${item.quantity})` : ''}
+                {name} {item.quantity > 1 ? `(${displayQty})` : ''}
               </span>
-              <span>{displayPrice.toFixed(2)}</span>
+              <span className="text-right">
+                <div>{unitPrice.toFixed(2)} / {item.unit === 'BOX' ? 'box' : 'strip'}</div>
+                <div>{displayPrice.toFixed(2)}</div>
+              </span>
             </div>
           );
         })}

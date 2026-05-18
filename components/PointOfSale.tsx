@@ -28,6 +28,7 @@ export default function PointOfSale({
   const [isPosScannerOpen, setIsPosScannerOpen] = useState(false);
   const [pendingItem, setPendingItem] = useState<any | null>(null);
   const [stripInput, setStripInput] = useState('1');
+  const [pendingUnit, setPendingUnit] = useState<'BOX' | 'STRIP'>('STRIP');
   
   const receiptRef = useRef<HTMLDivElement>(null);
 
@@ -45,23 +46,36 @@ export default function PointOfSale({
   // Available batches for POS (only items with stock)
   const availableItems = inventory.flatMap(med => {
     if (!med.batches || med.batches.length === 0) {
+      const stripsPerBox = med.stripsPerBox || 1;
+      const boxPrice = med.retailPrice || 0;
+      const stripPrice = boxPrice / stripsPerBox;
       return [{
         ...med,
         batchId: `empty-${med.id}`,
         batchNumber: '-',
         batchQuantity: 0,
-        batchPrice: med.retailPrice || 0,
+        batchPrice: stripPrice,
+        boxPrice: boxPrice,
         barcode: med.barcode
       }];
     }
-    return med.batches.map((b: any) => ({
+    return med.batches.map((b: any) => {
+      const stripsPerBox = med.stripsPerBox || 1;
+      const boxPrice = b.retailPrice || 0;
+      const stripPrice = boxPrice / stripsPerBox;
+      return {
         ...med,
         batchId: b.id,
         batchNumber: b.batchNumber,
+        // batchQuantity is total smallest-units (strips)
         batchQuantity: b.quantity,
-        batchPrice: b.retailPrice,
+        batchPrice: stripPrice,
+        boxPrice: boxPrice,
+        stripsPerBox: stripsPerBox,
+        defaultSellingUnit: med.defaultSellingUnit || 'BOX',
         barcode: med.barcode
-      }));
+      };
+    });
   });
 
   const filteredItems = availableItems.filter(item => 
@@ -76,14 +90,26 @@ export default function PointOfSale({
       return;
     }
     
-    const existing = cart.find(i => i.batchId === item.batchId);
-    if (existing) {
-      setAlertMessage(`${item.name} is already in cart. Update quantity in the cart.`);
+    const existingIndex = cart.findIndex(i => i.batchId === item.batchId);
+    if (existingIndex > -1) {
+      const existing = cart[existingIndex];
+      const stripsPerBox = existing.stripsPerBox || 1;
+      const maxInUnit = existing.unit === 'BOX' ? Math.floor(existing.batchQuantity / stripsPerBox) : existing.batchQuantity;
+      
+      if (existing.quantity >= maxInUnit) {
+        setAlertMessage(`Cannot add more. Stock limit of ${maxInUnit} ${existing.unit === 'BOX' ? 'box(es)' : 'strip(s)'} reached!`);
+        return;
+      }
+      
+      setCart(prev => prev.map((cItem, idx) => 
+        idx === existingIndex ? { ...cItem, quantity: cItem.quantity + 1 } : cItem
+      ));
       return;
     }
     
     setPendingItem(item);
     setStripInput('1');
+    setPendingUnit(item.defaultSellingUnit === 'BOX' ? 'BOX' : 'STRIP');
   }, [cart]);
 
   // USB Barcode Scanner Listener
@@ -94,7 +120,7 @@ export default function PointOfSale({
       // Ignore if user is typing in the search input directly, unless it's a very fast scanner input.
       // But for safety, we just capture fast inputs anywhere or if Enter is pressed after some chars.
       if (e.key === 'Enter') {
-        if (barcodeBuffer.length > 3) {
+          if (barcodeBuffer.length > 3) {
           // Find item by barcode
           const found = availableItems.find(i => i.barcode === barcodeBuffer);
           if (found) {
@@ -144,19 +170,29 @@ export default function PointOfSale({
   };
 
   const updateQuantity = (batchId: string, qty: number) => {
+    if (qty <= 0) {
+      removeFromCart(batchId);
+      return;
+    }
     setCart(prev => prev.map(i => {
       if (i.batchId === batchId) {
-        if (qty > i.batchQuantity) {
-          setAlertMessage(`Cannot add more. Only ${i.batchQuantity} available in stock!`);
+        // For items in cart, `quantity` is stored in the selected unit (BOX or STRIP)
+        const stripsPerBox = i.stripsPerBox || 1;
+        // compute max allowed in that unit
+        const maxInUnit = i.unit === 'BOX' ? Math.floor(i.batchQuantity / stripsPerBox) : i.batchQuantity;
+        if (qty > maxInUnit) {
+          setAlertMessage(`Cannot add more. Only ${maxInUnit} available in selected unit!`);
           return i;
         }
-        return { ...i, quantity: Math.min(Math.max(1, qty), i.batchQuantity) };
+        return { ...i, quantity: qty };
       }
       return i;
     }));
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + item.quantity * item.batchPrice, 0);
+  const subtotal = cart.reduce((sum, item) => {
+    return sum + item.quantity * (item.unitPrice || item.batchPrice || 0);
+  }, 0);
   const discountAmount = subtotal * ((Number(discountPercent) || 0) / 100);
   const total = subtotal - discountAmount;
   const changeDue = Math.max(0, (Number(tenderedAmount) || 0) - total);
@@ -168,8 +204,10 @@ export default function PointOfSale({
       await checkoutSale(cart.map(i => ({
         medicineId: i.id,
         batchId: i.batchId,
-        quantity: i.quantity,
-        price: i.batchPrice * (1 - (Number(discountPercent) || 0) / 100)
+        // convert quantity to smallest unit (strips) for server
+        quantity: i.unit === 'BOX' ? i.quantity * (i.stripsPerBox || 1) : i.quantity,
+        price: (i.stripPrice || i.batchPrice || 0) * (1 - (Number(discountPercent) || 0) / 100),
+        unit: i.unit
       })));
       
       const newId = 'REC-' + Math.floor(Math.random() * 100000000).toString().padStart(8, '0');
@@ -257,40 +295,43 @@ export default function PointOfSale({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {filteredItems.map(item => (
                   <div 
                     key={item.batchId} 
                     onClick={() => addToCart(item)}
-                    className={`bg-white p-5 rounded-2xl border ${item.batchQuantity <= 0 ? 'border-red-200 opacity-60' : 'border-slate-200 cursor-pointer hover:border-teal-500 hover:shadow-lg hover:shadow-teal-500/10 active:scale-95'} shadow-sm transition-all group relative overflow-hidden`}
+                    className={`bg-white p-3 rounded-xl border ${item.batchQuantity <= 0 ? 'border-red-200 opacity-60' : 'border-slate-200 cursor-pointer hover:border-teal-500 hover:shadow-lg hover:shadow-teal-500/10 active:scale-95'} shadow-sm transition-all group relative overflow-hidden`}
                   >
                     {item.batchQuantity > 0 && <div className="absolute top-0 left-0 w-1 h-full bg-teal-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>}
-                    <div className="font-bold text-slate-800 line-clamp-1 text-lg mb-1">{item.name}</div>
-                    <div className="text-xs text-slate-500 font-medium mb-3 line-clamp-1 bg-slate-100 inline-block px-2 py-0.5 rounded-full">{item.genericFormula}</div>
+                    <div className="font-bold text-slate-800 line-clamp-1 text-base mb-1">{item.name}</div>
+                    <div className="text-[11px] text-slate-500 font-medium mb-2 line-clamp-1 bg-slate-100 inline-block px-2 py-0.5 rounded-full">{item.genericFormula}</div>
                     <div className="flex justify-between items-end mt-2">
                       <div className="flex flex-col gap-1">
-                        <div className="text-[11px] text-teal-600 font-bold tracking-wide uppercase">Batch: {item.batchNumber}</div>
+                        <div className="text-[10px] text-teal-600 font-bold tracking-wide uppercase">Batch: {item.batchNumber}</div>
                         {item.batchQuantity > 0 ? (
-                          <div className={`text-[10px] text-white px-2 py-0.5 rounded-full font-bold uppercase ${item.batchQuantity <= 3 ? 'bg-orange-500 animate-pulse' : 'bg-slate-800'}`}>
+                          <div className={`text-[9px] text-white px-2 py-0.5 rounded-full font-bold uppercase ${item.batchQuantity <= 3 ? 'bg-orange-500 animate-pulse' : 'bg-slate-800'}`}>
                             Stock: {item.batchQuantity}
                           </div>
                         ) : (
-                          <div className="text-[10px] text-white bg-red-600 px-2 py-0.5 rounded-full font-bold uppercase">
+                          <div className="text-[9px] text-white bg-red-600 px-2 py-0.5 rounded-full font-bold uppercase">
                             Out of Stock
                           </div>
                         )}
                       </div>
-                      <div className="font-extrabold text-xl text-slate-900">Rs. {item.batchPrice}</div>
+                      <div className="font-extrabold text-lg text-slate-900 text-right leading-tight">
+                        <div>Box: Rs. {(item.boxPrice ?? ((item.batchPrice || 0) * (item.stripsPerBox || 1))).toFixed(2)}</div>
+                        <div className="text-xs font-semibold text-slate-500">Strip: Rs. {(item.batchPrice || 0).toFixed(2)}</div>
+                      </div>
                     </div>
                   </div>
                 ))}
                 {filteredItems.length === 0 && (
-                  <div className="col-span-full p-12 text-center flex flex-col items-center justify-center">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                      <Search className="w-8 h-8 text-slate-300" />
+                  <div className="col-span-full p-8 text-center flex flex-col items-center justify-center">
+                    <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
+                      <Search className="w-6 h-6 text-slate-300" />
                     </div>
-                    <p className="text-slate-500 text-lg font-medium">No items found with available stock.</p>
+                    <p className="text-slate-500 text-base font-medium">No items found with available stock.</p>
                   </div>
                 )}
               </div>
@@ -306,22 +347,28 @@ export default function PointOfSale({
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
               {cart.map(item => (
-                <div key={item.batchId} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col relative group hover:border-blue-200 transition-colors">
-                  <button 
-                    onClick={() => removeFromCart(item.batchId)}
-                    className="absolute -top-2 -right-2 bg-red-100 hover:bg-red-500 hover:text-white text-red-600 p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-sm"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                <div key={item.batchId} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col relative hover:border-blue-200 transition-colors">
                   <div className="font-bold text-slate-800 pr-4 text-lg">{item.name}</div>
-                  <div className="text-sm text-slate-500 mb-3 font-medium">Rs. {item.batchPrice} • Strips: {item.quantity}</div>
+                  <div className="text-sm text-slate-500 mb-3 font-medium">
+                    Rs. {(item.unitPrice || item.batchPrice || 0).toFixed(2)} / {item.unit === 'BOX' ? 'box' : 'strip'}
+                    {' '}• {item.unit === 'BOX' ? `${item.quantity} box(es)` : `${item.quantity} strip(s)`}
+                  </div>
                   <div className="flex justify-between items-center">
                     <div className="flex items-center bg-slate-100 rounded-xl overflow-hidden p-1">
-                      <button onClick={() => updateQuantity(item.batchId, item.quantity - 1)} className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 rounded-lg text-slate-600 font-bold shadow-sm">-</button>
+                      <button onClick={() => updateQuantity(item.batchId, item.quantity - 1)} className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 rounded-lg text-slate-600 font-bold shadow-sm transition-all active:scale-90">-</button>
                       <span className="w-10 text-center font-bold text-slate-800">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.batchId, item.quantity + 1)} className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 rounded-lg text-slate-600 font-bold shadow-sm">+</button>
+                      <button onClick={() => updateQuantity(item.batchId, item.quantity + 1)} className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 rounded-lg text-slate-600 font-bold shadow-sm transition-all active:scale-90">+</button>
                     </div>
-                    <div className="font-extrabold text-lg text-blue-600">Rs. {(item.batchPrice * item.quantity).toFixed(2)}</div>
+                    <div className="flex items-center gap-3">
+                      <div className="font-extrabold text-lg text-blue-600">Rs. {((item.unitPrice || item.batchPrice || 0) * item.quantity).toFixed(2)}</div>
+                      <button 
+                        onClick={() => removeFromCart(item.batchId)}
+                        className="bg-red-50 hover:bg-red-500 hover:text-white text-red-600 p-2 rounded-xl transition-all shadow-sm active:scale-90"
+                        title="Remove item"
+                      >
+                        <Trash2 className="w-4.5 h-4.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -426,33 +473,39 @@ export default function PointOfSale({
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 print:hidden animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden transform transition-all scale-100 animate-in zoom-in-95 duration-200">
             <div className="p-8 text-center">
-              <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">Enter Strips</h3>
-              <p className="text-slate-600 font-medium mb-6">How many strips of <span className="font-bold text-blue-600">{pendingItem.name}</span>?</p>
-              <div className="flex items-center gap-3 mb-6">
-                <button 
-                  onClick={() => setStripInput(Math.max(1, Number(stripInput) - 1).toString())}
-                  className="w-12 h-12 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600"
-                >
-                  -
-                </button>
-                <input 
-                  type="number" 
-                  value={stripInput} 
-                  onChange={e => setStripInput(e.target.value)} 
-                  className="flex-1 border-2 border-slate-200 rounded-xl px-4 py-3 text-center text-2xl font-bold text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
-                  autoFocus
-                  min="1"
-                  max={pendingItem.batchQuantity}
-                />
-                <button 
-                  onClick={() => setStripInput(Math.min(pendingItem.batchQuantity, Number(stripInput) + 1).toString())}
-                  className="w-12 h-12 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600"
-                >
-                  +
-                </button>
-              </div>
-              <p className="text-xs text-slate-500 mb-6">Available: {pendingItem.batchQuantity} strips</p>
-            </div>
+                    <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">Enter Quantity</h3>
+                    <p className="text-slate-600 font-medium mb-6">How many <span className="font-bold text-blue-600">{pendingItem.name}</span>?</p>
+                    <div className="flex items-center gap-3 mb-4">
+                      <select value={pendingUnit} onChange={e => setPendingUnit(e.target.value as any)} className="px-3 py-2 border border-slate-200 rounded-lg text-slate-800 bg-white">
+                        <option value="STRIP">Strip</option>
+                        <option value="BOX">Box</option>
+                      </select>
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => setStripInput(Math.max(1, Number(stripInput) - 1).toString())}
+                          className="w-12 h-12 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600"
+                        >
+                          -
+                        </button>
+                        <input 
+                          type="number" 
+                          value={stripInput} 
+                          onChange={e => setStripInput(e.target.value)} 
+                          className="w-24 border-2 border-slate-200 rounded-xl px-4 py-3 text-center text-2xl font-bold text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                          autoFocus
+                          min="1"
+                          max={pendingUnit === 'BOX' ? Math.max(1, Math.floor(pendingItem.batchQuantity / (pendingItem.stripsPerBox || 1))) : pendingItem.batchQuantity}
+                        />
+                        <button 
+                          onClick={() => setStripInput(Math.min(pendingUnit === 'BOX' ? Math.max(1, Math.floor(pendingItem.batchQuantity / (pendingItem.stripsPerBox || 1))) : pendingItem.batchQuantity, Number(stripInput) + 1).toString())}
+                          className="w-12 h-12 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-6">Available: {Math.floor(pendingItem.batchQuantity / (pendingItem.stripsPerBox || 1))} boxes ({pendingItem.batchQuantity} strips)</p>
+                  </div>
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
               <button
                 onClick={() => setPendingItem(null)}
@@ -463,10 +516,15 @@ export default function PointOfSale({
               <button
                 onClick={() => {
                   const qty = Number(stripInput);
-                  if (qty > 0 && qty <= pendingItem.batchQuantity) {
-                    setCart(prev => [...prev, { ...pendingItem, quantity: qty }]);
+                  const stripsPerBox = pendingItem.stripsPerBox || 1;
+                  const maxInUnit = pendingUnit === 'BOX' ? Math.floor(pendingItem.batchQuantity / stripsPerBox) : pendingItem.batchQuantity;
+                  if (qty > 0 && qty <= maxInUnit) {
+                    const stripUnitPrice = pendingItem.batchPrice || pendingItem.retailPrice || 0;
+                    const unitPrice = pendingUnit === 'BOX' ? stripUnitPrice * stripsPerBox : stripUnitPrice;
+                    setCart(prev => [...prev, { ...pendingItem, quantity: qty, unit: pendingUnit, stripsPerBox: stripsPerBox, stripPrice: stripUnitPrice, unitPrice }]);
                     setPendingItem(null);
                     setStripInput('1');
+                    setPendingUnit('STRIP');
                   }
                 }}
                 className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 transition-all"

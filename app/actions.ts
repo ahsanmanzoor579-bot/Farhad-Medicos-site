@@ -36,6 +36,8 @@ function demoInventory() {
       nearestExpiry: null,
       purchasePrice: 0,
       retailPrice: 0,
+      boxPurchasePrice: 0,
+      boxRetailPrice: 0,
       profitMargin: 0,
       batches: [],
     },
@@ -61,7 +63,9 @@ export async function getDashboardData() {
     const medicineStockMap: Record<string, number> = {};
 
     for (const batch of batches) {
-      totalStockValue += batch.quantity * batch.purchasePrice;
+      // batch.purchasePrice is stored as the box price, quantity is stored in strips
+      const stripsPerBox = batch.medicine.stripsPerBox || 1;
+      totalStockValue += batch.quantity * (batch.purchasePrice / stripsPerBox);
 
       const expiry = new Date(batch.expiryDate);
       if (expiry <= now) {
@@ -72,15 +76,18 @@ export async function getDashboardData() {
 
       if (!medicineStockMap[batch.medicineId]) {
         medicineStockMap[batch.medicineId] = 0;
-      }
-      medicineStockMap[batch.medicineId] += batch.quantity;
+        }
+        // batch.quantity now represents total smallest-selling-units (e.g. strips)
+        medicineStockMap[batch.medicineId] += batch.quantity;
     }
 
     let lowStockCount = 0;
     const allMedicines = await prisma.medicine.findMany();
     for (const med of allMedicines) {
-      const stock = medicineStockMap[med.id] || 0;
-      if (stock < 3) {
+      const stockUnits = medicineStockMap[med.id] || 0;
+      // interpret low-stock threshold in medicine-level units (minStockLevel in boxes)
+      const thresholdUnits = (med.stripsPerBox || 1) * (med.minStockLevel || 0);
+      if (stockUnits < Math.max(3, thresholdUnits)) {
         lowStockCount++;
       }
     }
@@ -97,7 +104,8 @@ export async function getDashboardData() {
       include: {
         items: {
           include: {
-            batch: true
+            batch: true,
+            medicine: true
           }
         }
       }
@@ -109,7 +117,10 @@ export async function getDashboardData() {
     for (const sale of todaySales) {
       dailySell += sale.total;
       for (const item of sale.items) {
-        const profit = (item.price - item.batch.purchasePrice) * item.quantity;
+        // item.price is per smallest unit (strip) — profit calc works on units (strips)
+        // item.batch.purchasePrice is stored as the box price, so we divide it by stripsPerBox
+        const stripsPerBox = item.medicine.stripsPerBox || 1;
+        const profit = (item.price - (item.batch.purchasePrice / stripsPerBox)) * item.quantity;
         dailyProfit += profit;
       }
     }
@@ -160,6 +171,15 @@ export async function getTodaySalesDetails() {
 
     for (const sale of todaySales) {
       for (const item of sale.items) {
+        // item.quantity is stored as smallest-selling-units (e.g. strips)
+        const stripsPerBox = item.medicine.stripsPerBox || 1;
+        const boxes = Math.floor(item.quantity / stripsPerBox);
+        const strips = item.quantity % stripsPerBox;
+        const displayQuantity = boxes > 0 ? `${boxes} box(es)${strips > 0 ? ' + ' + strips + ' strip(s)' : ''}` : `${strips} strip(s)`;
+        const stripUnitPrice = item.price;
+        const boxUnitPrice = stripUnitPrice * stripsPerBox;
+
+        const purchasePricePerStrip = item.batch.purchasePrice / stripsPerBox;
         salesItemsList.push({
           id: item.id,
           saleId: sale.id,
@@ -168,10 +188,13 @@ export async function getTodaySalesDetails() {
           genericFormula: item.medicine.genericFormula,
           batchNumber: item.batch.batchNumber,
           quantity: item.quantity,
-          salePrice: item.price,
-          purchasePrice: item.batch.purchasePrice,
-          revenue: item.price * item.quantity,
-          profit: (item.price - item.batch.purchasePrice) * item.quantity
+          unit: item.unit,
+          displayQuantity,
+          unitPrice: item.unit === 'BOX' ? boxUnitPrice : stripUnitPrice,
+          salePrice: stripUnitPrice,
+          purchasePrice: purchasePricePerStrip,
+          revenue: stripUnitPrice * item.quantity,
+          profit: (stripUnitPrice - purchasePricePerStrip) * item.quantity
         });
       }
     }
@@ -198,6 +221,7 @@ export async function getInventoryData() {
     });
 
     return medicines.map((med: any) => {
+      // totalStock is presented as total smallest-selling-units (e.g. strips)
       let totalStock = 0;
       let nearestExpiry: Date | null = null;
       let avgPurchasePrice = 0;
@@ -217,6 +241,13 @@ export async function getInventoryData() {
         profitMargin = ((avgRetailPrice - avgPurchasePrice) / avgRetailPrice) * 100;
       }
 
+      // derive box/strip presentation
+      const stripsPerBox = med.stripsPerBox || 1;
+      const boxes = Math.floor(totalStock / stripsPerBox);
+      const strips = totalStock % stripsPerBox;
+      const boxPurchasePrice = avgPurchasePrice;
+      const boxRetailPrice = avgRetailPrice;
+
       return {
         id: med.id,
         name: med.name,
@@ -224,10 +255,15 @@ export async function getInventoryData() {
         categoryName: med.category.name,
         minStockLevel: med.minStockLevel,
         rackLocation: med.rackLocation,
-        totalStock,
+        totalStockUnits: totalStock,
+        displayStock: { boxes, strips },
+        stripsPerBox,
+        defaultSellingUnit: med.defaultSellingUnit,
         nearestExpiry,
-        purchasePrice: avgPurchasePrice,
-        retailPrice: avgRetailPrice,
+        purchasePrice: avgPurchasePrice / stripsPerBox,
+        retailPrice: avgRetailPrice / stripsPerBox,
+        boxPurchasePrice,
+        boxRetailPrice,
         profitMargin,
         batches: med.batches
       };
@@ -264,6 +300,16 @@ export async function addMedicineAndCategory(data: {
   minStockLevel: number;
   rackLocation?: string;
   barcode?: string;
+  stripsPerBox?: number;
+  defaultSellingUnit?: 'BOX' | 'STRIP';
+  initialBatch?: {
+    batchNumber: string;
+    expiryDate: string; // YYYY-MM-DD
+    purchasePrice: number;
+    retailPrice: number;
+    quantity: number;
+    unit?: 'BOX' | 'STRIP';
+  };
 }) {
   const category = await prisma.category.upsert({
     where: { name: data.categoryName },
@@ -271,14 +317,40 @@ export async function addMedicineAndCategory(data: {
     create: { name: data.categoryName }
   });
 
-  await prisma.medicine.create({
-    data: {
-      name: data.medicineName,
-      genericFormula: data.genericFormula,
-      categoryId: category.id,
-      minStockLevel: data.minStockLevel,
-      rackLocation: data.rackLocation || null,
-      barcode: data.barcode || null
+  // Validate stripsPerBox server-side (must be positive integer)
+  const strips = typeof data.stripsPerBox === 'number' ? data.stripsPerBox : 1;
+  if (!Number.isInteger(strips) || strips < 1) {
+    throw new Error('Invalid value for stripsPerBox. It must be a whole number >= 1.');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const medicine = await tx.medicine.create({
+      data: {
+        name: data.medicineName,
+        genericFormula: data.genericFormula,
+        categoryId: category.id,
+        minStockLevel: data.minStockLevel,
+        rackLocation: data.rackLocation || null,
+        barcode: data.barcode || null,
+        stripsPerBox: strips,
+        defaultSellingUnit: data.defaultSellingUnit || 'BOX'
+      }
+    });
+
+    if (data.initialBatch) {
+      const b = data.initialBatch;
+      const unit = b.unit || 'BOX';
+      const quantityInStrips = unit === 'BOX' ? b.quantity * strips : b.quantity;
+      await tx.batch.create({
+        data: {
+          medicineId: medicine.id,
+          batchNumber: b.batchNumber,
+          expiryDate: new Date(b.expiryDate),
+          purchasePrice: b.purchasePrice,
+          retailPrice: b.retailPrice,
+          quantity: quantityInStrips
+        }
+      });
     }
   });
 
@@ -292,22 +364,35 @@ export async function addBatch(data: {
   purchasePrice: number;
   retailPrice: number;
   quantity: number;
+  unit?: 'BOX' | 'STRIP';
 }) {
+  const medicine = await prisma.medicine.findUnique({ where: { id: data.medicineId } });
+  if (!medicine) {
+    throw new Error(`Invalid medicine for batch ${data.medicineId}`);
+  }
+
+  const stripsPerBox = medicine.stripsPerBox || 1;
+  const unit = data.unit || 'BOX';
+  const quantity = unit === 'BOX' ? data.quantity * stripsPerBox : data.quantity;
+  const purchasePrice = data.purchasePrice;
+  const retailPrice = data.retailPrice;
+
   await prisma.batch.create({
     data: {
       medicineId: data.medicineId,
       batchNumber: data.batchNumber,
       expiryDate: new Date(data.expiryDate),
-      purchasePrice: data.purchasePrice,
-      retailPrice: data.retailPrice,
-      quantity: data.quantity
+      purchasePrice,
+      retailPrice,
+      quantity
     }
   });
 
   revalidatePath('/');
 }
 
-export async function checkoutSale(cart: { medicineId: string; batchId: string; quantity: number; price: number }[]) {
+export async function checkoutSale(cart: { medicineId: string; batchId: string; quantity: number; price: number; unit?: 'BOX' | 'STRIP' }[]) {
+  // Calculate grand total (prices are expected to be per smallest unit)
   const total = cart.reduce((sum, item) => sum + item.quantity * item.price, 0);
 
   // Perform inside a transaction
@@ -320,6 +405,7 @@ export async function checkoutSale(cart: { medicineId: string; batchId: string; 
             medicineId: item.medicineId,
             batchId: item.batchId,
             quantity: item.quantity,
+            unit: item.unit || 'STRIP',
             price: item.price
           }))
         }
@@ -328,12 +414,21 @@ export async function checkoutSale(cart: { medicineId: string; batchId: string; 
 
     for (const item of cart) {
       const batch = await tx.batch.findUnique({ where: { id: item.batchId } });
-      if (!batch || batch.quantity < item.quantity) {
+      const medicine = await tx.medicine.findUnique({ where: { id: item.medicineId } });
+      if (!batch || !medicine) {
+        throw new Error(`Invalid batch or medicine for batch ${item.batchId}`);
+      }
+
+      const stripsPerBox = medicine.stripsPerBox || 1;
+      const unitsToDeduct = item.unit === 'BOX' ? item.quantity * stripsPerBox : item.quantity;
+
+      if (batch.quantity < unitsToDeduct) {
         throw new Error(`Insufficient stock for batch ${item.batchId}`);
       }
+
       await tx.batch.update({
         where: { id: item.batchId },
-        data: { quantity: batch.quantity - item.quantity }
+        data: { quantity: batch.quantity - unitsToDeduct }
       });
     }
   });

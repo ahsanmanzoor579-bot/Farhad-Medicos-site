@@ -8,13 +8,16 @@ export default function AddBatchModal({
   isOpen,
   onClose,
   medicineId,
-  medicineName
+  medicineName,
+  stripsPerBox = 1
 }: {
   isOpen: boolean;
   onClose: () => void;
   medicineId: string;
   medicineName: string;
+  stripsPerBox?: number;
 }) {
+  const stripsPerBoxProp = stripsPerBox || 1;
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -24,13 +27,19 @@ export default function AddBatchModal({
     const formData = new FormData(e.currentTarget);
     
     try {
+      const unit = (formData.get('unit') as string) || 'BOX';
+      const rawQuantity = Number(formData.get('quantity'));
+      const rawPurchase = Number(formData.get('purchasePrice'));
+      const rawRetail = Number(formData.get('retailPrice'));
+
       await addBatch({
         medicineId,
         batchNumber: formData.get('batchNumber') as string,
         expiryDate: formData.get('expiryDate') as string,
-        purchasePrice: Number(formData.get('purchasePrice')),
-        retailPrice: Number(formData.get('retailPrice')),
-        quantity: Number(formData.get('quantity')),
+        purchasePrice: rawPurchase,
+        retailPrice: rawRetail,
+        quantity: rawQuantity,
+        unit,
       });
       onClose();
     } catch (error) {
@@ -59,6 +68,7 @@ export default function AddBatchModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <input type="hidden" name="stripsPerBox" value={String(stripsPerBoxProp)} />
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Batch Number *</label>
@@ -72,19 +82,30 @@ export default function AddBatchModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Purchase Price (PKR) *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Purchase Price (Box) *</label>
               <input required name="purchasePrice" type="number" step="0.01" min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Retail Price (PKR) *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Retail Price (Box) *</label>
               <input required name="retailPrice" type="number" step="0.01" min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Quantity *</label>
-            <input required name="quantity" type="number" min="1" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Quantity *</label>
+              <input required name="quantity" type="number" min="1" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Unit</label>
+              <select name="unit" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                <option value="BOX">Box</option>
+                <option value="STRIP">Strip</option>
+              </select>
+            </div>
           </div>
+
+          <div className="text-xs text-slate-500">Enter the box price here. The system will divide by strips per box and store the per-strip price automatically.</div>
 
           <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors">

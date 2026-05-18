@@ -11,10 +11,14 @@ type InventoryItem = {
   categoryName: string;
   minStockLevel: number;
   rackLocation: string | null;
-  totalStock: number;
+  totalStockUnits?: number;
+  displayStock?: { boxes: number; strips: number };
+  stripsPerBox?: number;
   nearestExpiry: Date | null;
   purchasePrice: number;
   retailPrice: number;
+  boxPurchasePrice?: number;
+  boxRetailPrice?: number;
   profitMargin: number;
 };
 
@@ -75,8 +79,8 @@ export default function InventoryTable({
                 </td>
                 <td className="px-6 py-4">{item.categoryName}</td>
                 <td className="px-6 py-4">
-                  <div className={`font-medium ${item.totalStock < 3 ? 'text-red-600' : 'text-slate-900'}`}>
-                    {item.totalStock}
+                  <div className={`font-medium ${((item.displayStock?.boxes || 0) === 0 && (item.displayStock?.strips || 0) < 3) ? 'text-red-600' : 'text-slate-900'}`}>
+                    {item.displayStock ? `${item.displayStock.boxes} boxes${item.displayStock.strips > 0 ? ' + ' + item.displayStock.strips + ' strips' : ''}` : item.totalStockUnits}
                   </div>
                   <div className="text-xs text-slate-400">Min: {item.minStockLevel}</div>
                 </td>
@@ -84,8 +88,10 @@ export default function InventoryTable({
                   {item.nearestExpiry ? format(item.nearestExpiry, 'MMM dd, yyyy') : '-'}
                 </td>
                 <td className="px-6 py-4">
-                  <div>Buy: Rs. {item.purchasePrice.toFixed(2)}</div>
-                  <div>Sell: Rs. {item.retailPrice.toFixed(2)}</div>
+                  <div>Buy: Rs. {(item.boxPurchasePrice ?? item.purchasePrice).toFixed(2)} / box</div>
+                  <div>Buy: Rs. {item.purchasePrice.toFixed(2)} / strip</div>
+                  <div>Sell: Rs. {(item.boxRetailPrice ?? item.retailPrice).toFixed(2)} / box</div>
+                  <div>Sell: Rs. {item.retailPrice.toFixed(2)} / strip</div>
                 </td>
                 <td className="px-6 py-4">
                   <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

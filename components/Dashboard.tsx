@@ -35,6 +35,9 @@ export default function Dashboard({ stats, inventory, categories, urgentBatches,
   const activeMedName = activeBatchModalMedId 
     ? inventory.find(m => m.id === activeBatchModalMedId)?.name || ''
     : '';
+  const activeMedStripsPerBox = activeBatchModalMedId
+    ? inventory.find(m => m.id === activeBatchModalMedId)?.stripsPerBox || 1
+    : 1;
 
   const handleImport = async () => {
     setImporting(true);
@@ -83,7 +86,11 @@ export default function Dashboard({ stats, inventory, categories, urgentBatches,
     }
     
     if (filterMode === 'low-stock') {
-      return item.totalStock < 3;
+      const totalUnits = item.totalStockUnits || 0;
+      const stripsPerBox = item.stripsPerBox || 1;
+      // interpret min stock as boxes -> units
+      const thresholdUnits = (item.minStockLevel || 0) * stripsPerBox;
+      return totalUnits > 0 && totalUnits <= Math.max(3, thresholdUnits);
     }
     
     return true;
@@ -196,6 +203,7 @@ export default function Dashboard({ stats, inventory, categories, urgentBatches,
         onClose={() => setActiveBatchModalMedId(null)}
         medicineId={activeBatchModalMedId || ''}
         medicineName={activeMedName}
+        stripsPerBox={activeMedStripsPerBox}
       />
 
       <ScanModeModal
