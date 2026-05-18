@@ -3,187 +3,254 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
+const emptyStats = {
+  totalUniqueMedicines: 0,
+  totalStockValue: 0,
+  expiredCount: 0,
+  shortExpiryCount: 0,
+  lowStockCount: 0,
+  dailySell: 0,
+  dailyProfit: 0,
+};
+
+function isDatabaseUnavailable(error: unknown) {
+  return error instanceof Error && /prisma|sqlite|database|connect|P1001|P1003|P2021|P2022/i.test(error.message);
+}
+
+function demoCategories() {
+  return [
+    { id: 'demo-cat-1', name: 'General' },
+  ];
+}
+
+function demoInventory() {
+  return [
+    {
+      id: 'demo-med-1',
+      name: 'Demo Medicine',
+      genericFormula: 'Sample Formula',
+      categoryName: 'General',
+      minStockLevel: 10,
+      rackLocation: 'A1',
+      totalStock: 0,
+      nearestExpiry: null,
+      purchasePrice: 0,
+      retailPrice: 0,
+      profitMargin: 0,
+      batches: [],
+    },
+  ];
+}
+
 export async function getDashboardData() {
-  const medicines = await prisma.medicine.count();
-  
-  const batches = await prisma.batch.findMany({
-    include: { medicine: true }
-  });
+  try {
+    const medicines = await prisma.medicine.count();
 
-  let totalStockValue = 0;
-  let shortExpiryCount = 0;
-  let expiredCount = 0;
-  
-  const now = new Date();
-  const sixMonthsFromNow = new Date();
-  sixMonthsFromNow.setDate(now.getDate() + 180);
+    const batches = await prisma.batch.findMany({
+      include: { medicine: true }
+    });
 
-  const medicineStockMap: Record<string, number> = {};
+    let totalStockValue = 0;
+    let shortExpiryCount = 0;
+    let expiredCount = 0;
 
-  for (const batch of batches) {
-    totalStockValue += batch.quantity * batch.purchasePrice;
-    
-    const expiry = new Date(batch.expiryDate);
-    if (expiry <= now) {
-      expiredCount++;
-    } else if (expiry <= sixMonthsFromNow) {
-      shortExpiryCount++;
-    }
+    const now = new Date();
+    const sixMonthsFromNow = new Date();
+    sixMonthsFromNow.setDate(now.getDate() + 180);
 
-    if (!medicineStockMap[batch.medicineId]) {
-      medicineStockMap[batch.medicineId] = 0;
-    }
-    medicineStockMap[batch.medicineId] += batch.quantity;
-  }
+    const medicineStockMap: Record<string, number> = {};
 
-  let lowStockCount = 0;
-  const allMedicines = await prisma.medicine.findMany();
-  for (const med of allMedicines) {
-    const stock = medicineStockMap[med.id] || 0;
-    if (stock < 3) {
-      lowStockCount++;
-    }
-  }
+    for (const batch of batches) {
+      totalStockValue += batch.quantity * batch.purchasePrice;
 
-  // Calculate Daily Sell and Profit
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-
-  const todaySales = await prisma.sale.findMany({
-    where: {
-      createdAt: {
-        gte: startOfDay,
+      const expiry = new Date(batch.expiryDate);
+      if (expiry <= now) {
+        expiredCount++;
+      } else if (expiry <= sixMonthsFromNow) {
+        shortExpiryCount++;
       }
-    },
-    include: {
-      items: {
-        include: {
-          batch: true
+
+      if (!medicineStockMap[batch.medicineId]) {
+        medicineStockMap[batch.medicineId] = 0;
+      }
+      medicineStockMap[batch.medicineId] += batch.quantity;
+    }
+
+    let lowStockCount = 0;
+    const allMedicines = await prisma.medicine.findMany();
+    for (const med of allMedicines) {
+      const stock = medicineStockMap[med.id] || 0;
+      if (stock < 3) {
+        lowStockCount++;
+      }
+    }
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const todaySales = await prisma.sale.findMany({
+      where: {
+        createdAt: {
+          gte: startOfDay,
+        }
+      },
+      include: {
+        items: {
+          include: {
+            batch: true
+          }
         }
       }
-    }
-  });
+    });
 
-  let dailySell = 0;
-  let dailyProfit = 0;
+    let dailySell = 0;
+    let dailyProfit = 0;
 
-  for (const sale of todaySales) {
-    dailySell += sale.total;
-    for (const item of sale.items) {
-      const profit = (item.price - item.batch.purchasePrice) * item.quantity;
-      dailyProfit += profit;
-    }
-  }
-
-  return {
-    totalUniqueMedicines: medicines,
-    totalStockValue,
-    expiredCount,
-    shortExpiryCount,
-    lowStockCount,
-    dailySell,
-    dailyProfit
-  };
-}
-
-export async function getTodaySalesDetails() {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-
-  const todaySales = await prisma.sale.findMany({
-    where: {
-      createdAt: {
-        gte: startOfDay,
+    for (const sale of todaySales) {
+      dailySell += sale.total;
+      for (const item of sale.items) {
+        const profit = (item.price - item.batch.purchasePrice) * item.quantity;
+        dailyProfit += profit;
       }
-    },
-    include: {
-      items: {
-        include: {
-          medicine: true,
-          batch: true
-        }
-      }
-    },
-    orderBy: {
-      createdAt: 'desc'
-    }
-  });
-
-  // Flatten the sales items into a single array for the table
-  const salesItemsList = [];
-  
-  for (const sale of todaySales) {
-    for (const item of sale.items) {
-      salesItemsList.push({
-        id: item.id,
-        saleId: sale.id,
-        time: sale.createdAt,
-        medicineName: item.medicine.name,
-        genericFormula: item.medicine.genericFormula,
-        batchNumber: item.batch.batchNumber,
-        quantity: item.quantity,
-        salePrice: item.price,
-        purchasePrice: item.batch.purchasePrice,
-        revenue: item.price * item.quantity,
-        profit: (item.price - item.batch.purchasePrice) * item.quantity
-      });
-    }
-  }
-
-  return salesItemsList;
-}
-
-export async function getInventoryData() {
-  const medicines = await prisma.medicine.findMany({
-    include: {
-      category: true,
-      batches: {
-        orderBy: { expiryDate: 'asc' }
-      }
-    }
-  });
-
-  return medicines.map((med: any) => {
-    let totalStock = 0;
-    let nearestExpiry: Date | null = null;
-    let avgPurchasePrice = 0;
-    let avgRetailPrice = 0;
-
-    if (med.batches.length > 0) {
-      nearestExpiry = med.batches[0].expiryDate;
-      totalStock = med.batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
-      
-      // Calculate weighted averages or just take the latest batch's prices.
-      // We'll just take the latest batch for pricing simplicity if not specified.
-      const latestBatch = med.batches[med.batches.length - 1];
-      avgPurchasePrice = latestBatch.purchasePrice;
-      avgRetailPrice = latestBatch.retailPrice;
-    }
-
-    let profitMargin = 0;
-    if (avgRetailPrice > 0) {
-      profitMargin = ((avgRetailPrice - avgPurchasePrice) / avgRetailPrice) * 100;
     }
 
     return {
-      id: med.id,
-      name: med.name,
-      genericFormula: med.genericFormula,
-      categoryName: med.category.name,
-      minStockLevel: med.minStockLevel,
-      rackLocation: med.rackLocation,
-      totalStock,
-      nearestExpiry,
-      purchasePrice: avgPurchasePrice,
-      retailPrice: avgRetailPrice,
-      profitMargin,
-      batches: med.batches
+      totalUniqueMedicines: medicines,
+      totalStockValue,
+      expiredCount,
+      shortExpiryCount,
+      lowStockCount,
+      dailySell,
+      dailyProfit
     };
-  });
+  } catch (error) {
+    if (isDatabaseUnavailable(error)) {
+      return emptyStats;
+    }
+
+    throw error;
+  }
+}
+
+export async function getTodaySalesDetails() {
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const todaySales = await prisma.sale.findMany({
+      where: {
+        createdAt: {
+          gte: startOfDay,
+        }
+      },
+      include: {
+        items: {
+          include: {
+            medicine: true,
+            batch: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    const salesItemsList: any[] = [];
+
+    for (const sale of todaySales) {
+      for (const item of sale.items) {
+        salesItemsList.push({
+          id: item.id,
+          saleId: sale.id,
+          time: sale.createdAt,
+          medicineName: item.medicine.name,
+          genericFormula: item.medicine.genericFormula,
+          batchNumber: item.batch.batchNumber,
+          quantity: item.quantity,
+          salePrice: item.price,
+          purchasePrice: item.batch.purchasePrice,
+          revenue: item.price * item.quantity,
+          profit: (item.price - item.batch.purchasePrice) * item.quantity
+        });
+      }
+    }
+
+    return salesItemsList;
+  } catch (error) {
+    if (isDatabaseUnavailable(error)) {
+      return [];
+    }
+
+    throw error;
+  }
+}
+
+export async function getInventoryData() {
+  try {
+    const medicines = await prisma.medicine.findMany({
+      include: {
+        category: true,
+        batches: {
+          orderBy: { expiryDate: 'asc' }
+        }
+      }
+    });
+
+    return medicines.map((med: any) => {
+      let totalStock = 0;
+      let nearestExpiry: Date | null = null;
+      let avgPurchasePrice = 0;
+      let avgRetailPrice = 0;
+
+      if (med.batches.length > 0) {
+        nearestExpiry = med.batches[0].expiryDate;
+        totalStock = med.batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+
+        const latestBatch = med.batches[med.batches.length - 1];
+        avgPurchasePrice = latestBatch.purchasePrice;
+        avgRetailPrice = latestBatch.retailPrice;
+      }
+
+      let profitMargin = 0;
+      if (avgRetailPrice > 0) {
+        profitMargin = ((avgRetailPrice - avgPurchasePrice) / avgRetailPrice) * 100;
+      }
+
+      return {
+        id: med.id,
+        name: med.name,
+        genericFormula: med.genericFormula,
+        categoryName: med.category.name,
+        minStockLevel: med.minStockLevel,
+        rackLocation: med.rackLocation,
+        totalStock,
+        nearestExpiry,
+        purchasePrice: avgPurchasePrice,
+        retailPrice: avgRetailPrice,
+        profitMargin,
+        batches: med.batches
+      };
+    });
+  } catch (error) {
+    if (isDatabaseUnavailable(error)) {
+      return demoInventory();
+    }
+
+    throw error;
+  }
 }
 
 export async function getCategories() {
-  return await prisma.category.findMany({ orderBy: { name: 'asc' } });
+  try {
+    return await prisma.category.findMany({ orderBy: { name: 'asc' } });
+  } catch (error) {
+    if (isDatabaseUnavailable(error)) {
+      return demoCategories();
+    }
+
+    throw error;
+  }
 }
 
 export async function getMedicinesList() {
@@ -275,6 +342,7 @@ export async function checkoutSale(cart: { medicineId: string; batchId: string; 
 }
 
 export async function importPakistaniMedicines() {
+  try {
   const categories = [
     'Painkillers', 'Antibiotics', 'Allergy', 'Gastrointestinal', 'Vitamins', 'Cough & Cold', 'Diabetes',
     'Cardiology', 'Neurology/Psychiatry', 'Pulmonology', 'Dermatology'
@@ -395,5 +463,12 @@ export async function importPakistaniMedicines() {
     }
   }
 
-  revalidatePath('/');
+    revalidatePath('/');
+  } catch (error) {
+    if (isDatabaseUnavailable(error)) {
+      return;
+    }
+
+    throw error;
+  }
 }
