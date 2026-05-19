@@ -49,3 +49,8 @@ medicine-app-63cce-firebase-adminsdk-fbsvc-d215f07266.json
 # scratch
 /scratch/
 
+# firebase
+.firebase/
+firebase-debug.log
+
+
