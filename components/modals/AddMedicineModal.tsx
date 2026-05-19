@@ -60,7 +60,7 @@ export default function AddMedicineModal({
 
     setLoading(true);
     try {
-      await addMedicineAndCategory({
+      const res = await addMedicineAndCategory({
         medicineName: formData.get('medicineName') as string,
         genericFormula: formData.get('genericFormula') as string,
         categoryName: finalCategoryName,
@@ -71,6 +71,11 @@ export default function AddMedicineModal({
         barcode: (formData.get('barcode') as string) || undefined,
         initialBatch
       });
+
+      if (res && !res.success) {
+        alert(res.error);
+        return;
+      }
       onClose();
     } catch (error: any) {
       console.error(error);

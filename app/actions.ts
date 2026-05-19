@@ -316,60 +316,67 @@ export async function addMedicineAndCategory(data: {
     unit?: 'BOX' | 'STRIP';
   };
 }) {
-  const categoriesSnap = await db.ref('categories').once('value');
-  const categoriesMap = categoriesSnap.val() || {};
-  let category = (Object.values(categoriesMap) as any[]).find((c: any) => c.name === data.categoryName) as any;
+  try {
+    const categoriesSnap = await db.ref('categories').once('value');
+    const categoriesMap = categoriesSnap.val() || {};
+    let category = (Object.values(categoriesMap) as any[]).find((c: any) => c.name === data.categoryName) as any;
 
-  const updates: Record<string, any> = {};
-  let categoryId = category?.id;
+    const updates: Record<string, any> = {};
+    let categoryId = category?.id;
 
-  if (!category) {
-    categoryId = randomUUID();
-    category = { id: categoryId, name: data.categoryName };
-    updates[`categories/${categoryId}`] = category;
-  }
+    if (!category) {
+      categoryId = randomUUID();
+      category = { id: categoryId, name: data.categoryName };
+      updates[`categories/${categoryId}`] = category;
+    }
 
-  const strips = typeof data.stripsPerBox === 'number' ? data.stripsPerBox : 1;
-  if (!Number.isInteger(strips) || strips < 1) {
-    throw new Error('Invalid value for stripsPerBox. It must be a whole number >= 1.');
-  }
+    const strips = typeof data.stripsPerBox === 'number' ? data.stripsPerBox : 1;
+    if (!Number.isInteger(strips) || strips < 1) {
+      throw new Error('Invalid value for stripsPerBox. It must be a whole number >= 1.');
+    }
 
-  const medicineId = randomUUID();
-  const medicine = {
-    id: medicineId,
-    name: data.medicineName,
-    genericFormula: data.genericFormula,
-    categoryId: categoryId,
-    minStockLevel: data.minStockLevel,
-    rackLocation: data.rackLocation || null,
-    barcode: data.barcode || null,
-    stripsPerBox: strips,
-    defaultSellingUnit: data.defaultSellingUnit || 'BOX',
-    createdAt: new Date().toISOString()
-  };
-  updates[`medicines/${medicineId}`] = medicine;
-
-  if (data.initialBatch) {
-    const b = data.initialBatch;
-    const unit = b.unit || 'BOX';
-    const quantityInStrips = unit === 'BOX' ? b.quantity * strips : b.quantity;
-    const batchId = randomUUID();
-    const batch = {
-      id: batchId,
-      medicineId: medicineId,
-      batchNumber: b.batchNumber,
-      expiryDate: new Date(b.expiryDate).toISOString(),
-      purchasePrice: b.purchasePrice,
-      retailPrice: b.retailPrice,
-      quantity: quantityInStrips,
+    const medicineId = randomUUID();
+    const medicine = {
+      id: medicineId,
+      name: data.medicineName,
+      genericFormula: data.genericFormula,
+      categoryId: categoryId,
+      minStockLevel: data.minStockLevel,
+      rackLocation: data.rackLocation || null,
+      barcode: data.barcode || null,
+      stripsPerBox: strips,
+      defaultSellingUnit: data.defaultSellingUnit || 'BOX',
       createdAt: new Date().toISOString()
     };
-    updates[`batches/${batchId}`] = batch;
-  }
+    updates[`medicines/${medicineId}`] = medicine;
 
-  await db.ref().update(updates);
-  revalidatePath('/');
+    if (data.initialBatch) {
+      const b = data.initialBatch;
+      const unit = b.unit || 'BOX';
+      const quantityInStrips = unit === 'BOX' ? b.quantity * strips : b.quantity;
+      const batchId = randomUUID();
+      const batch = {
+        id: batchId,
+        medicineId: medicineId,
+        batchNumber: b.batchNumber,
+        expiryDate: new Date(b.expiryDate).toISOString(),
+        purchasePrice: b.purchasePrice,
+        retailPrice: b.retailPrice,
+        quantity: quantityInStrips,
+        createdAt: new Date().toISOString()
+      };
+      updates[`batches/${batchId}`] = batch;
+    }
+
+    await db.ref().update(updates);
+    revalidatePath('/');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error in addMedicineAndCategory action:', error);
+    return { success: false, error: error?.message || 'Failed to add medicine due to a server error.' };
+  }
 }
+
 
 export async function addBatch(data: {
   medicineId: string;
