@@ -8,6 +8,9 @@ if (!admin.apps.length) {
     try {
       // Parse the JSON string from environment variable
       const serviceAccount = JSON.parse(serviceAccountEnv);
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
       credential = admin.credential.cert(serviceAccount);
     } catch (e) {
       console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT environment variable:', e);
