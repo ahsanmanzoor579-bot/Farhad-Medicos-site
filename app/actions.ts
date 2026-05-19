@@ -1,56 +1,13 @@
-'use server';
-
-import { prisma } from '@/lib/prisma';
-import { revalidatePath } from 'next/cache';
-
-const emptyStats = {
-  totalUniqueMedicines: 0,
-  totalStockValue: 0,
-  expiredCount: 0,
-  shortExpiryCount: 0,
-  lowStockCount: 0,
-  dailySell: 0,
-  dailyProfit: 0,
-};
-
-function isDatabaseUnavailable(error: unknown) {
-  return error instanceof Error && /prisma|sqlite|database|connect|P1001|P1003|P2021|P2022/i.test(error.message);
-}
-
-function demoCategories() {
-  return [
-    { id: 'demo-cat-1', name: 'General' },
-  ];
-}
-
-function demoInventory() {
-  return [
-    {
-      id: 'demo-med-1',
-      name: 'Demo Medicine',
-      genericFormula: 'Sample Formula',
-      categoryName: 'General',
-      minStockLevel: 10,
-      rackLocation: 'A1',
-      totalStock: 0,
-      nearestExpiry: null,
-      purchasePrice: 0,
-      retailPrice: 0,
-      boxPurchasePrice: 0,
-      boxRetailPrice: 0,
-      profitMargin: 0,
-      batches: [],
-    },
-  ];
-}
+// Client-side Local Storage Database Actions for Farhad Medicos
+import { localDb } from '@/lib/localDb';
 
 export async function getDashboardData() {
   try {
-    const medicines = await prisma.medicine.count();
+    const medicines = localDb.getMedicines();
+    const batches = localDb.getBatches();
+    const sales = localDb.getSales();
 
-    const batches = await prisma.batch.findMany({
-      include: { medicine: true }
-    });
+    const totalMedicines = medicines.length;
 
     let totalStockValue = 0;
     let shortExpiryCount = 0;
@@ -63,8 +20,10 @@ export async function getDashboardData() {
     const medicineStockMap: Record<string, number> = {};
 
     for (const batch of batches) {
-      // batch.purchasePrice is stored as the box price, quantity is stored in strips
-      const stripsPerBox = batch.medicine.stripsPerBox || 1;
+      const med = medicines.find(m => m.id === batch.medicineId);
+      if (!med) continue;
+
+      const stripsPerBox = med.stripsPerBox || 1;
       totalStockValue += batch.quantity * (batch.purchasePrice / stripsPerBox);
 
       const expiry = new Date(batch.expiryDate);
@@ -76,16 +35,13 @@ export async function getDashboardData() {
 
       if (!medicineStockMap[batch.medicineId]) {
         medicineStockMap[batch.medicineId] = 0;
-        }
-        // batch.quantity now represents total smallest-selling-units (e.g. strips)
-        medicineStockMap[batch.medicineId] += batch.quantity;
+      }
+      medicineStockMap[batch.medicineId] += batch.quantity;
     }
 
     let lowStockCount = 0;
-    const allMedicines = await prisma.medicine.findMany();
-    for (const med of allMedicines) {
+    for (const med of medicines) {
       const stockUnits = medicineStockMap[med.id] || 0;
-      // interpret low-stock threshold in medicine-level units (minStockLevel in boxes)
       const thresholdUnits = (med.stripsPerBox || 1) * (med.minStockLevel || 0);
       if (stockUnits < Math.max(3, thresholdUnits)) {
         lowStockCount++;
@@ -95,38 +51,29 @@ export async function getDashboardData() {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const todaySales = await prisma.sale.findMany({
-      where: {
-        createdAt: {
-          gte: startOfDay,
-        }
-      },
-      include: {
-        items: {
-          include: {
-            batch: true,
-            medicine: true
-          }
-        }
-      }
-    });
-
     let dailySell = 0;
     let dailyProfit = 0;
 
-    for (const sale of todaySales) {
-      dailySell += sale.total;
-      for (const item of sale.items) {
-        // item.price is per smallest unit (strip) — profit calc works on units (strips)
-        // item.batch.purchasePrice is stored as the box price, so we divide it by stripsPerBox
-        const stripsPerBox = item.medicine.stripsPerBox || 1;
-        const profit = (item.price - (item.batch.purchasePrice / stripsPerBox)) * item.quantity;
-        dailyProfit += profit;
+    for (const sale of sales) {
+      const saleDate = new Date(sale.createdAt);
+      if (saleDate >= startOfDay) {
+        dailySell += sale.total;
+        
+        const items = Object.values(sale.items || {});
+        for (const item of items) {
+          const med = medicines.find(m => m.id === item.medicineId);
+          const batch = batches.find(b => b.id === item.batchId);
+          if (!med || !batch) continue;
+
+          const stripsPerBox = med.stripsPerBox || 1;
+          const profit = (item.price - (batch.purchasePrice / stripsPerBox)) * item.quantity;
+          dailyProfit += profit;
+        }
       }
     }
 
     return {
-      totalUniqueMedicines: medicines,
+      totalUniqueMedicines: totalMedicines,
       totalStockValue,
       expiredCount,
       shortExpiryCount,
@@ -135,58 +82,56 @@ export async function getDashboardData() {
       dailyProfit
     };
   } catch (error) {
-    if (isDatabaseUnavailable(error)) {
-      return emptyStats;
-    }
-
-    throw error;
+    console.error('Error in getDashboardData:', error);
+    return {
+      totalUniqueMedicines: 0,
+      totalStockValue: 0,
+      expiredCount: 0,
+      shortExpiryCount: 0,
+      lowStockCount: 0,
+      dailySell: 0,
+      dailyProfit: 0
+    };
   }
 }
 
 export async function getTodaySalesDetails() {
   try {
+    const sales = localDb.getSales();
+    const medicines = localDb.getMedicines();
+    const batches = localDb.getBatches();
+
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const todaySales = await prisma.sale.findMany({
-      where: {
-        createdAt: {
-          gte: startOfDay,
-        }
-      },
-      include: {
-        items: {
-          include: {
-            medicine: true,
-            batch: true
-          }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+    const todaySales = sales
+      .filter(sale => new Date(sale.createdAt) >= startOfDay)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const salesItemsList: any[] = [];
 
     for (const sale of todaySales) {
-      for (const item of sale.items) {
-        // item.quantity is stored as smallest-selling-units (e.g. strips)
-        const stripsPerBox = item.medicine.stripsPerBox || 1;
+      const items = Object.values(sale.items || {});
+      for (const item of items) {
+        const med = medicines.find(m => m.id === item.medicineId);
+        const batch = batches.find(b => b.id === item.batchId);
+        if (!med || !batch) continue;
+
+        const stripsPerBox = med.stripsPerBox || 1;
         const boxes = Math.floor(item.quantity / stripsPerBox);
         const strips = item.quantity % stripsPerBox;
         const displayQuantity = boxes > 0 ? `${boxes} box(es)${strips > 0 ? ' + ' + strips + ' strip(s)' : ''}` : `${strips} strip(s)`;
         const stripUnitPrice = item.price;
         const boxUnitPrice = stripUnitPrice * stripsPerBox;
 
-        const purchasePricePerStrip = item.batch.purchasePrice / stripsPerBox;
+        const purchasePricePerStrip = batch.purchasePrice / stripsPerBox;
         salesItemsList.push({
           id: item.id,
           saleId: sale.id,
-          time: sale.createdAt,
-          medicineName: item.medicine.name,
-          genericFormula: item.medicine.genericFormula,
-          batchNumber: item.batch.batchNumber,
+          time: new Date(sale.createdAt),
+          medicineName: med.name,
+          genericFormula: med.genericFormula,
+          batchNumber: batch.batchNumber,
           quantity: item.quantity,
           unit: item.unit,
           displayQuantity,
@@ -201,37 +146,33 @@ export async function getTodaySalesDetails() {
 
     return salesItemsList;
   } catch (error) {
-    if (isDatabaseUnavailable(error)) {
-      return [];
-    }
-
-    throw error;
+    console.error('Error in getTodaySalesDetails:', error);
+    return [];
   }
 }
 
 export async function getInventoryData() {
   try {
-    const medicines = await prisma.medicine.findMany({
-      include: {
-        category: true,
-        batches: {
-          orderBy: { expiryDate: 'asc' }
-        }
-      }
-    });
+    const medicines = localDb.getMedicines();
+    const categories = localDb.getCategories();
+    const batches = localDb.getBatches();
 
-    return medicines.map((med: any) => {
-      // totalStock is presented as total smallest-selling-units (e.g. strips)
+    return medicines.map(med => {
+      const category = categories.find(c => c.id === med.categoryId) || { name: 'General' };
+      const medBatches = batches
+        .filter(b => b.medicineId === med.id)
+        .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+
       let totalStock = 0;
-      let nearestExpiry: Date | null = null;
+      let nearestExpiry: string | null = null;
       let avgPurchasePrice = 0;
       let avgRetailPrice = 0;
 
-      if (med.batches.length > 0) {
-        nearestExpiry = med.batches[0].expiryDate;
-        totalStock = med.batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+      if (medBatches.length > 0) {
+        nearestExpiry = medBatches[0].expiryDate;
+        totalStock = medBatches.reduce((sum, b) => sum + b.quantity, 0);
 
-        const latestBatch = med.batches[med.batches.length - 1];
+        const latestBatch = medBatches[medBatches.length - 1];
         avgPurchasePrice = latestBatch.purchasePrice;
         avgRetailPrice = latestBatch.retailPrice;
       }
@@ -241,7 +182,6 @@ export async function getInventoryData() {
         profitMargin = ((avgRetailPrice - avgPurchasePrice) / avgRetailPrice) * 100;
       }
 
-      // derive box/strip presentation
       const stripsPerBox = med.stripsPerBox || 1;
       const boxes = Math.floor(totalStock / stripsPerBox);
       const strips = totalStock % stripsPerBox;
@@ -252,45 +192,44 @@ export async function getInventoryData() {
         id: med.id,
         name: med.name,
         genericFormula: med.genericFormula,
-        categoryName: med.category.name,
+        categoryName: category.name,
         minStockLevel: med.minStockLevel,
-        rackLocation: med.rackLocation,
+        rackLocation: med.rackLocation || null,
         totalStockUnits: totalStock,
         displayStock: { boxes, strips },
         stripsPerBox,
         defaultSellingUnit: med.defaultSellingUnit,
-        nearestExpiry,
+        nearestExpiry: nearestExpiry ? new Date(nearestExpiry) : null,
         purchasePrice: avgPurchasePrice / stripsPerBox,
         retailPrice: avgRetailPrice / stripsPerBox,
         boxPurchasePrice,
         boxRetailPrice,
         profitMargin,
-        batches: med.batches
+        batches: medBatches.map(b => ({
+          ...b,
+          expiryDate: new Date(b.expiryDate)
+        }))
       };
     });
   } catch (error) {
-    if (isDatabaseUnavailable(error)) {
-      return demoInventory();
-    }
-
-    throw error;
+    console.error('Error in getInventoryData:', error);
+    return [];
   }
 }
 
 export async function getCategories() {
   try {
-    return await prisma.category.findMany({ orderBy: { name: 'asc' } });
+    return localDb.getCategories().sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
-    if (isDatabaseUnavailable(error)) {
-      return demoCategories();
-    }
-
-    throw error;
+    console.error('Error in getCategories:', error);
+    return [];
   }
 }
 
-export async function getMedicinesList() {
-  return await prisma.medicine.findMany({ orderBy: { name: 'asc' } });
+function triggerUpdate() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('local-db-update'));
+  }
 }
 
 export async function addMedicineAndCategory(data: {
@@ -304,266 +243,151 @@ export async function addMedicineAndCategory(data: {
   defaultSellingUnit?: 'BOX' | 'STRIP';
   initialBatch?: {
     batchNumber: string;
-    expiryDate: string; // YYYY-MM-DD
+    expiryDate: string;
     purchasePrice: number;
     retailPrice: number;
     quantity: number;
     unit?: 'BOX' | 'STRIP';
   };
 }) {
-  const category = await prisma.category.upsert({
-    where: { name: data.categoryName },
-    update: {},
-    create: { name: data.categoryName }
+  const med = localDb.addMedicine({
+    name: data.medicineName,
+    genericFormula: data.genericFormula,
+    categoryName: data.categoryName,
+    minStockLevel: data.minStockLevel,
+    rackLocation: data.rackLocation,
+    barcode: data.barcode,
+    stripsPerBox: data.stripsPerBox,
+    defaultSellingUnit: data.defaultSellingUnit
   });
 
-  // Validate stripsPerBox server-side (must be positive integer)
-  const strips = typeof data.stripsPerBox === 'number' ? data.stripsPerBox : 1;
-  if (!Number.isInteger(strips) || strips < 1) {
-    throw new Error('Invalid value for stripsPerBox. It must be a whole number >= 1.');
-  }
-
-  await prisma.$transaction(async (tx) => {
-    const medicine = await tx.medicine.create({
-      data: {
-        name: data.medicineName,
-        genericFormula: data.genericFormula,
-        categoryId: category.id,
-        minStockLevel: data.minStockLevel,
-        rackLocation: data.rackLocation || null,
-        barcode: data.barcode || null,
-        stripsPerBox: strips,
-        defaultSellingUnit: data.defaultSellingUnit || 'BOX'
-      }
+  if (data.initialBatch) {
+    const b = data.initialBatch;
+    const unit = b.unit || 'BOX';
+    const strips = data.stripsPerBox || 1;
+    const quantityInStrips = unit === 'BOX' ? b.quantity * strips : b.quantity;
+    
+    localDb.addBatch({
+      medicineId: med.id,
+      batchNumber: b.batchNumber,
+      expiryDate: new Date(b.expiryDate).toISOString(),
+      purchasePrice: b.purchasePrice,
+      retailPrice: b.retailPrice,
+      quantity: quantityInStrips
     });
-
-    if (data.initialBatch) {
-      const b = data.initialBatch;
-      const unit = b.unit || 'BOX';
-      const quantityInStrips = unit === 'BOX' ? b.quantity * strips : b.quantity;
-      await tx.batch.create({
-        data: {
-          medicineId: medicine.id,
-          batchNumber: b.batchNumber,
-          expiryDate: new Date(b.expiryDate),
-          purchasePrice: b.purchasePrice,
-          retailPrice: b.retailPrice,
-          quantity: quantityInStrips
-        }
-      });
-    }
-  });
-
-  revalidatePath('/');
+  }
+  
+  triggerUpdate();
 }
 
 export async function addBatch(data: {
   medicineId: string;
   batchNumber: string;
-  expiryDate: string; // YYYY-MM-DD
+  expiryDate: string;
   purchasePrice: number;
   retailPrice: number;
   quantity: number;
   unit?: 'BOX' | 'STRIP';
 }) {
-  const medicine = await prisma.medicine.findUnique({ where: { id: data.medicineId } });
-  if (!medicine) {
-    throw new Error(`Invalid medicine for batch ${data.medicineId}`);
-  }
+  const medicines = localDb.getMedicines();
+  const med = medicines.find(m => m.id === data.medicineId);
+  if (!med) throw new Error('Medicine not found.');
 
-  const stripsPerBox = medicine.stripsPerBox || 1;
+  const stripsPerBox = med.stripsPerBox || 1;
   const unit = data.unit || 'BOX';
   const quantity = unit === 'BOX' ? data.quantity * stripsPerBox : data.quantity;
-  const purchasePrice = data.purchasePrice;
-  const retailPrice = data.retailPrice;
 
-  await prisma.batch.create({
-    data: {
-      medicineId: data.medicineId,
-      batchNumber: data.batchNumber,
-      expiryDate: new Date(data.expiryDate),
-      purchasePrice,
-      retailPrice,
-      quantity
-    }
+  localDb.addBatch({
+    medicineId: data.medicineId,
+    batchNumber: data.batchNumber,
+    expiryDate: new Date(data.expiryDate).toISOString(),
+    purchasePrice: data.purchasePrice,
+    retailPrice: data.retailPrice,
+    quantity
   });
 
-  revalidatePath('/');
+  triggerUpdate();
 }
 
-export async function checkoutSale(cart: { medicineId: string; batchId: string; quantity: number; price: number; unit?: 'BOX' | 'STRIP' }[]) {
-  // Calculate grand total (prices are expected to be per smallest unit)
-  const total = cart.reduce((sum, item) => sum + item.quantity * item.price, 0);
+export async function checkoutSale(items: Array<{
+  medicineId: string;
+  batchId: string;
+  quantity: number;
+  unit: 'BOX' | 'STRIP';
+  price: number;
+}>) {
+  localDb.checkoutSale(items);
+  triggerUpdate();
+}
 
-  // Perform inside a transaction
-  await prisma.$transaction(async (tx) => {
-    const sale = await tx.sale.create({
-      data: {
-        total,
-        items: {
-          create: cart.map(item => ({
-            medicineId: item.medicineId,
-            batchId: item.batchId,
-            quantity: item.quantity,
-            unit: item.unit || 'STRIP',
-            price: item.price
-          }))
-        }
-      }
-    });
+export async function deleteMedicine(id: string) {
+  localDb.deleteMedicine(id);
+  triggerUpdate();
+}
 
-    for (const item of cart) {
-      const batch = await tx.batch.findUnique({ where: { id: item.batchId } });
-      const medicine = await tx.medicine.findUnique({ where: { id: item.medicineId } });
-      if (!batch || !medicine) {
-        throw new Error(`Invalid batch or medicine for batch ${item.batchId}`);
-      }
-
-      const stripsPerBox = medicine.stripsPerBox || 1;
-      const unitsToDeduct = item.unit === 'BOX' ? item.quantity * stripsPerBox : item.quantity;
-
-      if (batch.quantity < unitsToDeduct) {
-        throw new Error(`Insufficient stock for batch ${item.batchId}`);
-      }
-
-      await tx.batch.update({
-        where: { id: item.batchId },
-        data: { quantity: batch.quantity - unitsToDeduct }
-      });
-    }
-  });
-
-  revalidatePath('/');
+export async function deleteBatch(id: string) {
+  localDb.deleteBatch(id);
+  triggerUpdate();
 }
 
 export async function importPakistaniMedicines() {
   try {
-  const categories = [
-    'Painkillers', 'Antibiotics', 'Allergy', 'Gastrointestinal', 'Vitamins', 'Cough & Cold', 'Diabetes',
-    'Cardiology', 'Neurology/Psychiatry', 'Pulmonology', 'Dermatology'
-  ];
-  const createdCategories: Record<string, string> = {};
+    const categories = [
+      'Painkillers', 'Antibiotics', 'Gastrointestinal', 'Allergy', 
+      'Cough & Cold', 'Diabetes', 'Cardiology', 'Neurology/Psychiatry', 
+      'Pulmonology', 'Dermatology', 'Vitamins'
+    ];
 
-  for (const catName of categories) {
-    const cat = await prisma.category.upsert({
-      where: { name: catName },
-      update: {},
-      create: { name: catName }
-    });
-    createdCategories[catName] = cat.id;
-  }
+    for (const catName of categories) {
+      localDb.addCategory(catName);
+    }
 
-  const medicines = [
-    // Painkillers & NSAIDs
-    { name: 'Panadol Advance', generic: 'Paracetamol 500mg', cat: 'Painkillers', barcode: '8961122000018' },
-    { name: 'Panadol Extra', generic: 'Paracetamol + Caffeine', cat: 'Painkillers', barcode: '8961122000019' },
-    { name: 'Brufen 400mg', generic: 'Ibuprofen', cat: 'Painkillers', barcode: '8961122000032' },
-    { name: 'Synflex 550mg', generic: 'Naproxen Sodium', cat: 'Painkillers', barcode: '8961122000033' },
-    { name: 'Nuberol Forte', generic: 'Paracetamol + Orphenadrine', cat: 'Painkillers', barcode: '8961122000034' },
-    { name: 'Disprin', generic: 'Aspirin', cat: 'Painkillers', barcode: '8961122000094' },
-    { name: 'Ponstan', generic: 'Mefenamic Acid', cat: 'Painkillers', barcode: '8961122000124' },
-    { name: 'Voltral 50mg', generic: 'Diclofenac Sodium', cat: 'Painkillers', barcode: '8961122000125' },
-    { name: 'Caflam 50mg', generic: 'Diclofenac Potassium', cat: 'Painkillers', barcode: '8961122000126' },
+    const medicines = [
+      { name: 'Ponstan 250mg', generic: 'Mefenamic Acid', cat: 'Painkillers', barcode: '8961122000124' },
+      { name: 'Voltral 50mg', generic: 'Diclofenac Sodium', cat: 'Painkillers', barcode: '8961122000125' },
+      { name: 'Caflam 50mg', generic: 'Diclofenac Potassium', cat: 'Painkillers', barcode: '8961122000126' },
+      { name: 'Augmentin 625mg', generic: 'Amoxicillin + Clavulanate', cat: 'Antibiotics', barcode: '8961122000025' },
+      { name: 'Cravit 500mg', generic: 'Levofloxacin', cat: 'Antibiotics', barcode: '8961122000027' },
+      { name: 'Flagyl 400mg', generic: 'Metronidazole', cat: 'Gastrointestinal', barcode: '8961122000049' },
+      { name: 'Risek 20mg', generic: 'Omeprazole', cat: 'Gastrointestinal', barcode: '8961122000071' },
+      { name: 'Nexum 40mg', generic: 'Esomeprazole', cat: 'Gastrointestinal', barcode: '8961122000072' },
+      { name: 'Arinac', generic: 'Ibuprofen + Pseudoephedrine', cat: 'Allergy', barcode: '8961122000056' },
+      { name: 'Rigix', generic: 'Cetirizine', cat: 'Allergy', barcode: '8961122000063' },
+      { name: 'Surbex Z', generic: 'Multivitamin', cat: 'Vitamins', barcode: '8961122000087' }
+    ];
 
-    // Antibiotics
-    { name: 'Augmentin 625mg', generic: 'Amoxicillin + Clavulanate', cat: 'Antibiotics', barcode: '8961122000025' },
-    { name: 'Augmentin 1g', generic: 'Amoxicillin + Clavulanate', cat: 'Antibiotics', barcode: '8961122000026' },
-    { name: 'Cravit 500mg', generic: 'Levofloxacin', cat: 'Antibiotics', barcode: '8961122000027' },
-    { name: 'Leflox 500mg', generic: 'Levofloxacin', cat: 'Antibiotics', barcode: '8961122000028' },
-    { name: 'Velosef 500mg', generic: 'Cephradine', cat: 'Antibiotics', barcode: '8961122000029' },
-    { name: 'Azomax 500mg', generic: 'Azithromycin', cat: 'Antibiotics', barcode: '8961122000030' },
-    { name: 'Novidat 500mg', generic: 'Ciprofloxacin', cat: 'Antibiotics', barcode: '8961122000031' },
+    const currentMeds = localDb.getMedicines();
+    const currentBatches = localDb.getBatches();
 
-    // Gastrointestinal
-    { name: 'Flagyl 400mg', generic: 'Metronidazole', cat: 'Gastrointestinal', barcode: '8961122000049' },
-    { name: 'Risek 40mg', generic: 'Omeprazole', cat: 'Gastrointestinal', barcode: '8961122000070' },
-    { name: 'Risek 20mg', generic: 'Omeprazole', cat: 'Gastrointestinal', barcode: '8961122000071' },
-    { name: 'Nexum 40mg', generic: 'Esomeprazole', cat: 'Gastrointestinal', barcode: '8961122000072' },
-    { name: 'Gaviscon Liquid', generic: 'Sodium Alginate', cat: 'Gastrointestinal', barcode: '8961122000073' },
-    { name: 'Motilium 10mg', generic: 'Domperidone', cat: 'Gastrointestinal', barcode: '8961122000074' },
-    { name: 'Gravinate', generic: 'Dimenhydrinate', cat: 'Gastrointestinal', barcode: '8961122000075' },
-
-    // Allergy, Cough & Cold
-    { name: 'Arinac', generic: 'Ibuprofen + Pseudoephedrine', cat: 'Allergy', barcode: '8961122000056' },
-    { name: 'Rigix', generic: 'Cetirizine', cat: 'Allergy', barcode: '8961122000063' },
-    { name: 'Softin', generic: 'Loratadine', cat: 'Allergy', barcode: '8961122000064' },
-    { name: 'Fexet 120mg', generic: 'Fexofenadine', cat: 'Allergy', barcode: '8961122000065' },
-    { name: 'Corex D', generic: 'Dextromethorphan', cat: 'Cough & Cold', barcode: '8961122000100' },
-    { name: 'Hydryllin', generic: 'Aminophylline + Diphenhydramine', cat: 'Cough & Cold', barcode: '8961122000101' },
-    { name: 'Pulmonol', generic: 'Cough Syrup', cat: 'Cough & Cold', barcode: '8961122000102' },
-
-    // Diabetes
-    { name: 'Glucophage 500mg', generic: 'Metformin', cat: 'Diabetes', barcode: '8961122000117' },
-    { name: 'Getryl 1mg', generic: 'Glimepiride', cat: 'Diabetes', barcode: '8961122000118' },
-    { name: 'Getryl 2mg', generic: 'Glimepiride', cat: 'Diabetes', barcode: '8961122000119' },
-    { name: 'Amaryl 2mg', generic: 'Glimepiride', cat: 'Diabetes', barcode: '8961122000120' },
-    { name: 'Mixtard 30/70', generic: 'Insulin Human', cat: 'Diabetes', barcode: '8961122000121' },
-
-    // Cardiology
-    { name: 'Concor 5mg', generic: 'Bisoprolol', cat: 'Cardiology', barcode: '8961122000127' },
-    { name: 'Lipget 10mg', generic: 'Atorvastatin', cat: 'Cardiology', barcode: '8961122000128' },
-    { name: 'Lipget 20mg', generic: 'Atorvastatin', cat: 'Cardiology', barcode: '8961122000129' },
-    { name: 'Angised', generic: 'Glyceryl Trinitrate', cat: 'Cardiology', barcode: '8961122000130' },
-    { name: 'Norvasc 5mg', generic: 'Amlodipine', cat: 'Cardiology', barcode: '8961122000131' },
-
-    // Neurology & Psychiatry
-    { name: 'Lexotanil 3mg', generic: 'Bromazepam', cat: 'Neurology/Psychiatry', barcode: '8961122000132' },
-    { name: 'Xanax 0.5mg', generic: 'Alprazolam', cat: 'Neurology/Psychiatry', barcode: '8961122000133' },
-    { name: 'Epival 250mg', generic: 'Divalproex Sodium', cat: 'Neurology/Psychiatry', barcode: '8961122000134' },
-
-    // Pulmonology
-    { name: 'Ventolin Inhaler', generic: 'Salbutamol', cat: 'Pulmonology', barcode: '8961122000135' },
-    { name: 'Singulair 10mg', generic: 'Montelukast', cat: 'Pulmonology', barcode: '8961122000136' },
-    { name: 'Myteka 10mg', generic: 'Montelukast', cat: 'Pulmonology', barcode: '8961122000137' },
-
-    // Dermatology
-    { name: 'Fucidin Cream', generic: 'Fusidic Acid', cat: 'Dermatology', barcode: '8961122000138' },
-    { name: 'Betnovate Cream', generic: 'Betamethasone Valerate', cat: 'Dermatology', barcode: '8961122000139' },
-    { name: 'Polyfax Ointment', generic: 'Polymyxin B + Bacitracin', cat: 'Dermatology', barcode: '8961122000140' },
-
-    // Vitamins & Supplements
-    { name: 'Surbex Z', generic: 'Multivitamin', cat: 'Vitamins', barcode: '8961122000087' },
-    { name: 'Sangobion', generic: 'Iron + Vitamins', cat: 'Vitamins', barcode: '8961122000088' },
-    { name: 'CAC 1000 Plus', generic: 'Calcium + Vitamin D', cat: 'Vitamins', barcode: '8961122000089' },
-    { name: 'Zain', generic: 'Zinc Sulfate', cat: 'Vitamins', barcode: '8961122000090' }
-  ];
-
-  for (const med of medicines) {
-    const dbMed = await prisma.medicine.upsert({
-      where: { barcode: med.barcode },
-      update: {},
-      create: {
-        name: med.name,
-        genericFormula: med.generic,
-        categoryId: createdCategories[med.cat],
-        minStockLevel: 10,
-        barcode: med.barcode
+    for (const med of medicines) {
+      let dbMed = currentMeds.find(m => m.barcode === med.barcode);
+      if (!dbMed) {
+        dbMed = localDb.addMedicine({
+          name: med.name,
+          genericFormula: med.generic,
+          categoryName: med.cat,
+          minStockLevel: 10,
+          barcode: med.barcode,
+          stripsPerBox: 10,
+          defaultSellingUnit: 'STRIP'
+        });
       }
-    });
 
-    const batchCount = await prisma.batch.count({ where: { medicineId: dbMed.id } });
-    if (batchCount === 0) {
-      const defaultExpiry = new Date();
-      defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 2);
-      await prisma.batch.create({
-        data: {
-          medicineId: dbMed.id,
+      const medBatches = currentBatches.filter(b => b.medicineId === dbMed!.id);
+      if (medBatches.length === 0) {
+        localDb.addBatch({
+          medicineId: dbMed!.id,
           batchNumber: `B-${med.barcode.slice(-4)}`,
-          expiryDate: defaultExpiry.toISOString(),
-          quantity: 100,
-          purchasePrice: 100,
-          retailPrice: 150,
-        }
-      });
+          expiryDate: new Date(Date.now() + 365 * 2 * 24 * 60 * 60 * 1000).toISOString(),
+          purchasePrice: 200,
+          retailPrice: 250,
+          quantity: 100
+        });
+      }
     }
-  }
 
-    revalidatePath('/');
+    triggerUpdate();
   } catch (error) {
-    if (isDatabaseUnavailable(error)) {
-      return;
-    }
-
-    throw error;
+    console.error('Error in importPakistaniMedicines:', error);
   }
 }
