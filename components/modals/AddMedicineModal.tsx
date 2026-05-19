@@ -67,7 +67,7 @@ export default function AddMedicineModal({
         minStockLevel: Number(formData.get('minStockLevel')),
         rackLocation: formData.get('rackLocation') as string,
         stripsPerBox: stripsNum,
-        defaultSellingUnit: (formData.get('defaultSellingUnit') as string) || 'BOX',
+        defaultSellingUnit: ((formData.get('defaultSellingUnit') as string) || 'BOX') as 'BOX' | 'STRIP',
         barcode: (formData.get('barcode') as string) || undefined,
         initialBatch
       });

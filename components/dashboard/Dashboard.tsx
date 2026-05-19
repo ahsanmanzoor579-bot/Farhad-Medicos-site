@@ -4,12 +4,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import StatsBanner from './StatsBanner';
 import NotificationsPanel from './NotificationsPanel';
-import InventoryTable from './InventoryTable';
-import SalesTable from './SalesTable';
-import AddMedicineModal from './modals/AddMedicineModal';
-import AddBatchModal from './modals/AddBatchModal';
-import ScanModeModal from './modals/ScanModeModal';
-import PointOfSale from './PointOfSale';
+import InventoryTable from '../tables/InventoryTable';
+import SalesTable from '../tables/SalesTable';
+import AddMedicineModal from '../modals/AddMedicineModal';
+import AddBatchModal from '../modals/AddBatchModal';
+import ScanModeModal from '../modals/ScanModeModal';
+import PointOfSale from '../pos/PointOfSale';
 import { PlusCircle, ShoppingBag, Database, LogOut, Activity, ScanBarcode } from 'lucide-react';
 import { importPakistaniMedicines } from '@/app/actions';
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Search, Plus, Minus, ShoppingCart, ScanBarcode, CheckCircle2, Printer, AlertCircle, Trash2 } from 'lucide-react';
-import PosScannerModal from './modals/PosScannerModal';
+import PosScannerModal from '../modals/PosScannerModal';
 import { checkoutSale } from '@/app/actions';
 import ReceiptPrinter from './ReceiptPrinter';
 
@@ -339,34 +339,34 @@ export default function PointOfSale({
           </div>
 
           {/* RIGHT: Cart & Checkout */}
-          <div className="w-full md:w-96 bg-white flex flex-col shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.05)] z-20">
-            <div className="p-4 bg-slate-900 text-white flex items-center shadow-md">
+          <div className="w-full md:w-96 h-full max-h-full bg-white flex flex-col overflow-hidden shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.05)] z-20">
+            <div className="p-4 bg-slate-900 text-white flex items-center shadow-md flex-shrink-0">
               <ShoppingCart className="mr-3 w-5 h-5 text-blue-400" />
               <h2 className="text-lg font-bold tracking-wide">Current Order</h2>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-slate-50/50">
               {cart.map(item => (
-                <div key={item.batchId} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col relative hover:border-blue-200 transition-colors">
-                  <div className="font-bold text-slate-800 pr-4 text-lg">{item.name}</div>
-                  <div className="text-sm text-slate-500 mb-3 font-medium">
+                <div key={item.batchId} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col relative hover:border-blue-200 transition-colors">
+                  <div className="font-bold text-slate-800 pr-4 text-base">{item.name}</div>
+                  <div className="text-xs text-slate-500 mb-1.5 font-medium">
                     Rs. {(item.unitPrice || item.batchPrice || 0).toFixed(2)} / {item.unit === 'BOX' ? 'box' : 'strip'}
                     {' '}• {item.unit === 'BOX' ? `${item.quantity} box(es)` : `${item.quantity} strip(s)`}
                   </div>
                   <div className="flex justify-between items-center">
-                    <div className="flex items-center bg-slate-100 rounded-xl overflow-hidden p-1">
-                      <button onClick={() => updateQuantity(item.batchId, item.quantity - 1)} className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 rounded-lg text-slate-600 font-bold shadow-sm transition-all active:scale-90">-</button>
-                      <span className="w-10 text-center font-bold text-slate-800">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.batchId, item.quantity + 1)} className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 rounded-lg text-slate-600 font-bold shadow-sm transition-all active:scale-90">+</button>
+                    <div className="flex items-center bg-slate-100 rounded-lg overflow-hidden p-0.5">
+                      <button onClick={() => updateQuantity(item.batchId, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-50 rounded text-slate-600 font-bold shadow-sm transition-all active:scale-90">-</button>
+                      <span className="w-8 text-center font-bold text-sm text-slate-800">{item.quantity}</span>
+                      <button onClick={() => updateQuantity(item.batchId, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-50 rounded text-slate-600 font-bold shadow-sm transition-all active:scale-90">+</button>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="font-extrabold text-lg text-blue-600">Rs. {((item.unitPrice || item.batchPrice || 0) * item.quantity).toFixed(2)}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="font-extrabold text-base text-blue-600">Rs. {((item.unitPrice || item.batchPrice || 0) * item.quantity).toFixed(2)}</div>
                       <button 
                         onClick={() => removeFromCart(item.batchId)}
-                        className="bg-red-50 hover:bg-red-500 hover:text-white text-red-600 p-2 rounded-xl transition-all shadow-sm active:scale-90"
+                        className="bg-red-50 hover:bg-red-500 hover:text-white text-red-600 p-1.5 rounded-lg transition-all shadow-sm active:scale-90"
                         title="Remove item"
                       >
-                        <Trash2 className="w-4.5 h-4.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -374,79 +374,79 @@ export default function PointOfSale({
               ))}
               {cart.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                  <ShoppingCart className="w-16 h-16 mb-4 opacity-20" />
-                  <p className="font-medium text-lg">Cart is empty</p>
-                  <p className="text-sm text-slate-400 text-center px-8 mt-2">Scan a barcode or search for an item to add it to the cart.</p>
+                  <ShoppingCart className="w-12 h-12 mb-3 opacity-20" />
+                  <p className="font-medium text-base">Cart is empty</p>
+                  <p className="text-xs text-slate-400 text-center px-6 mt-1">Scan a barcode or search for an item to add it to the cart.</p>
                 </div>
               )}
             </div>
 
-            <div className="p-6 bg-white border-t border-slate-200 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)] space-y-4">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Cashier</span>
+            <div className="flex-shrink-0 p-4 bg-white border-t border-slate-200 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)] space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-bold uppercase tracking-wider">Cashier</span>
                 <input 
                   type="text" 
                   value={cashierName} 
                   onChange={e => setCashierName(e.target.value)} 
-                  className="border border-slate-200 rounded-xl px-3 py-1.5 text-right w-32 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 bg-slate-50 font-medium" 
+                  className="border border-slate-200 rounded-lg px-2.5 py-1 text-right w-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 bg-slate-50 font-medium text-xs" 
                 />
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Discount (%)</span>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-bold uppercase tracking-wider">Discount (%)</span>
                 <input 
                   type="number" 
                   value={discountPercent} 
                   onChange={e => setDiscountPercent(e.target.value)} 
-                  className="border border-slate-200 rounded-xl px-3 py-1.5 text-right w-32 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent font-bold text-orange-700 bg-orange-50" 
+                  className="border border-slate-200 rounded-lg px-2.5 py-1 text-right w-24 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent font-bold text-orange-700 bg-orange-50 text-xs" 
                   placeholder="0"
                   min="0"
                   max="100"
                 />
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Items</span>
-                <span className="font-extrabold text-slate-700 text-lg">{cart.length}</span>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-bold uppercase tracking-wider">Items</span>
+                <span className="font-extrabold text-slate-700 text-sm">{cart.length}</span>
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Tendered (Rs.)</span>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-bold uppercase tracking-wider">Tendered (Rs.)</span>
                 <input 
                   type="number" 
                   value={tenderedAmount} 
                   onChange={e => setTenderedAmount(e.target.value)} 
-                  className="border border-slate-200 rounded-xl px-3 py-1.5 text-right w-32 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-bold text-emerald-700 bg-emerald-50" 
+                  className="border border-slate-200 rounded-lg px-2.5 py-1 text-right w-24 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-bold text-emerald-700 bg-emerald-50 text-xs" 
                   placeholder="0.00"
                 />
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Change</span>
-                <span className="font-extrabold text-emerald-600 text-lg">Rs. {changeDue.toFixed(2)}</span>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-bold uppercase tracking-wider">Change</span>
+                <span className="font-extrabold text-emerald-600 text-sm">Rs. {changeDue.toFixed(2)}</span>
               </div>
 
-              <div className="flex justify-between items-end mb-6 pt-4 border-t-2 border-dashed border-slate-200">
+              <div className="flex justify-between items-end mb-3 pt-2 border-t border-dashed border-slate-200">
                 <div className="flex flex-col">
-                  <span className="text-slate-500 font-bold uppercase tracking-wider text-sm mb-1">Total Due</span>
+                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-0.5">Total Due</span>
                   {Number(discountPercent) > 0 && (
-                    <span className="text-xs text-orange-600 font-bold line-through">Rs. {subtotal.toFixed(2)}</span>
+                    <span className="text-[10px] text-orange-600 font-bold line-through">Rs. {subtotal.toFixed(2)}</span>
                   )}
                 </div>
-                <span className="text-4xl font-black text-slate-900 tracking-tight">Rs. {total.toFixed(2)}</span>
+                <span className="text-2xl font-black text-slate-900 tracking-tight">Rs. {total.toFixed(2)}</span>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <button 
                   onClick={() => handleCheckout(false)}
                   disabled={cart.length === 0 || loading || (tenderedAmount !== '' && Number(tenderedAmount) < total)}
-                  className="w-1/2 py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-lg flex items-center justify-center transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transform hover:-translate-y-0.5 active:translate-y-0"
+                  className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm flex items-center justify-center transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transform hover:-translate-y-0.5 active:translate-y-0"
                 >
                   {loading ? 'Processing...' : 'Pay Only'}
                 </button>
                 <button 
                   onClick={() => handleCheckout(true)}
                   disabled={cart.length === 0 || loading || (tenderedAmount !== '' && Number(tenderedAmount) < total)}
-                  className="w-1/2 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl font-bold text-lg flex items-center justify-center transition-all shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transform hover:-translate-y-0.5 active:translate-y-0"
+                  className="w-1/2 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-bold text-sm flex items-center justify-center transition-all shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transform hover:-translate-y-0.5 active:translate-y-0"
                 >
                   {loading ? 'Processing...' : (
                     <>
-                      <Printer className="w-5 h-5 mr-2" /> Pay & Print
+                      <Printer className="w-4 h-4 mr-1.5" /> Pay & Print
                     </>
                   )}
                 </button>

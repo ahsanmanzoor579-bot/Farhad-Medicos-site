@@ -27,7 +27,7 @@ export default function AddBatchModal({
     const formData = new FormData(e.currentTarget);
     
     try {
-      const unit = (formData.get('unit') as string) || 'BOX';
+      const unit = ((formData.get('unit') as string) || 'BOX') as 'BOX' | 'STRIP';
       const rawQuantity = Number(formData.get('quantity'));
       const rawPurchase = Number(formData.get('purchasePrice'));
       const rawRetail = Number(formData.get('retailPrice'));

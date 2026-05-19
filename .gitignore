@@ -41,3 +41,11 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+
+# secrets
+medicine-app-63cce-firebase-adminsdk-fbsvc-d215f07266.json
+*.json
+
+# scratch
+/scratch/
+
