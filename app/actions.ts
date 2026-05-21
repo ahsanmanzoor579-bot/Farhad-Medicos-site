@@ -955,3 +955,18 @@ export async function clearAllSystemData() {
     throw new Error('Failed to wipe system data.');
   }
 }
+
+export async function clearStockAndSalesData() {
+  try {
+    const batchesCol = await getCollection('batches');
+    const salesCol = await getCollection('sales');
+
+    await batchesCol.deleteMany({});
+    await salesCol.deleteMany({});
+
+    revalidatePath('/');
+  } catch (error) {
+    console.error('Error in clearStockAndSalesData:', error);
+    throw new Error('Failed to wipe stock and sales data.');
+  }
+}

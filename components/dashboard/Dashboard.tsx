@@ -12,7 +12,7 @@ import ScanModeModal from '../modals/ScanModeModal';
 import PointOfSale from '../pos/PointOfSale';
 import ImportDbModal from '../modals/ImportDbModal';
 import { PlusCircle, ShoppingBag, Database, LogOut, Activity, ScanBarcode, Bell, X, CheckCircle2, Settings, ShieldAlert, Trash2, SlidersHorizontal, Lock, Eye, EyeOff } from 'lucide-react';
-import { clearAllSystemData } from '@/app/actions';
+import { clearAllSystemData, clearStockAndSalesData } from '@/app/actions';
 
 type DashboardProps = {
   stats: any;
@@ -787,8 +787,25 @@ export default function Dashboard({ stats, inventory, categories, todaySales }: 
                   <h4 className="font-extrabold text-red-950 text-sm">Dangerous Zone: Reset Database</h4>
                 </div>
                 <p className="text-[11px] text-red-800 font-semibold leading-relaxed">
-                  Clicking the button below deletes all medicines, active stock batches, purchase rates, categories, and checkout sales transactions permanently. This action cannot be undone.
+                  Clicking these buttons deletes actual data permanently. This action cannot be undone.
                 </p>
+                <button
+                  onClick={async () => {
+                    if (confirm('Are you absolutely sure you want to delete ALL active stock batches, purchase rates, and checkout sales? Your medicine catalog will remain untouched. This cannot be undone.')) {
+                      try {
+                        await clearStockAndSalesData();
+                        alert('Stock and Sales wiped successfully. Catalog is intact!');
+                        window.location.reload();
+                      } catch (err: any) {
+                        alert(err.message || 'Wipe failed.');
+                      }
+                    }
+                  }}
+                  className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold text-xs shadow-md shadow-orange-500/10 flex items-center justify-center gap-1.5 transition-all transform hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Clear Stock & Sales Only
+                </button>
                 <button
                   onClick={async () => {
                     if (confirm('Are you absolutely sure you want to delete ALL medicines, batches, sales, and categories in the database? This cannot be undone.')) {
@@ -804,7 +821,7 @@ export default function Dashboard({ stats, inventory, categories, todaySales }: 
                   className="w-full py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs shadow-md shadow-red-500/10 flex items-center justify-center gap-1.5 transition-all transform hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
-                  Clear & Wipe All Database Data
+                  Wipe Entire System (Including Catalog)
                 </button>
               </div>
 
