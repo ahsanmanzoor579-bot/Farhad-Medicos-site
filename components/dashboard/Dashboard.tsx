@@ -31,8 +31,8 @@ export default function Dashboard({ stats, inventory, categories, todaySales }: 
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
-  const [adminUsername, setAdminUsername] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
+  const [adminUsername, setAdminUsername] = useState('pixetechglobel');
+  const [adminPassword, setAdminPassword] = useState('meddemo4u');
   const [adminLoginError, setAdminLoginError] = useState('');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -312,10 +312,8 @@ export default function Dashboard({ stats, inventory, categories, todaySales }: 
                 if (isAdminAuthenticated) {
                   setIsAdminOpen(true);
                 } else {
-                  setAdminUsername('');
-                  setAdminPassword('');
                   setAdminLoginError('');
-                  setShowAdminPassword(false);
+                  setShowAdminPassword(true);
                   setIsAdminLoginOpen(true);
                 }
               }}

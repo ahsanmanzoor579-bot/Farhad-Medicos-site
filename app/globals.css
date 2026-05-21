@@ -240,3 +240,9 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Hide native password reveal icons in Edge/IE */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}

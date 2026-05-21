@@ -256,28 +256,28 @@ export default function PointOfSale({
         <div className="bg-white w-full h-full flex flex-col md:flex-row shadow-xl overflow-hidden">
           
           {/* LEFT: Product Selection */}
-          <div className="flex-1 flex flex-col bg-slate-50 border-r border-slate-200">
-            <div className="p-4 border-b border-white/20 bg-gradient-to-r from-teal-500 to-blue-600 text-white flex items-center justify-between shadow-md z-10">
-              <div className="flex items-center">
-                <h2 className="text-xl font-bold flex items-center tracking-tight mr-6">
+          <div className="flex-1 min-w-0 flex flex-col bg-slate-50 border-r border-slate-200">
+            <div className="p-4 border-b border-white/20 bg-gradient-to-r from-teal-500 to-blue-600 text-white flex items-center justify-between shadow-md z-10 gap-4">
+              <div className="flex items-center flex-wrap gap-4 min-w-0">
+                <h2 className="text-xl font-bold flex items-center tracking-tight whitespace-nowrap">
                   <ScanBarcode className="mr-3 w-6 h-6 text-teal-100" /> POS Terminal
                 </h2>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button 
                     onClick={() => setListModalContent({ title: 'Low Stock Items', items: lowStockNames })}
-                    className="bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm transition-all transform hover:scale-105 active:scale-95"
+                    className="bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm transition-all transform hover:scale-105 active:scale-95 whitespace-nowrap"
                   >
                     Low Stock: {lowStockNames.length}
                   </button>
                   <button 
                     onClick={() => setListModalContent({ title: 'Out of Stock Items', items: outOfStockNames })}
-                    className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm transition-all transform hover:scale-105 active:scale-95"
+                    className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm transition-all transform hover:scale-105 active:scale-95 whitespace-nowrap"
                   >
                     Out of Stock: {outOfStockNames.length}
                   </button>
                 </div>
               </div>
-              <button onClick={onClose} className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-all"><X className="w-6 h-6"/></button>
+              <button onClick={onClose} className="flex-shrink-0 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-all"><X className="w-6 h-6"/></button>
             </div>
             
             <div className="p-4 bg-white shadow-sm z-0 flex gap-3">
