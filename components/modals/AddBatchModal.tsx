@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { addBatch } from '@/app/actions';
+import { useRouter } from 'next/navigation';
 
 export default function AddBatchModal({
   isOpen,
@@ -19,6 +20,7 @@ export default function AddBatchModal({
 }) {
   const stripsPerBoxProp = stripsPerBox || 1;
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -41,6 +43,7 @@ export default function AddBatchModal({
         quantity: rawQuantity,
         unit,
       });
+      router.refresh();
       onClose();
     } catch (error) {
       console.error(error);

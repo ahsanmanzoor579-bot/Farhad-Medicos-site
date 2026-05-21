@@ -31,7 +31,7 @@ export default function Dashboard({ stats, inventory, categories, todaySales }: 
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
-  const [adminUsername, setAdminUsername] = useState('pixetechglobel');
+  const [adminUsername, setAdminUsername] = useState('pixeltechglobel');
   const [adminPassword, setAdminPassword] = useState('meddemo4u');
   const [adminLoginError, setAdminLoginError] = useState('');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
@@ -489,7 +489,7 @@ export default function Dashboard({ stats, inventory, categories, todaySales }: 
               onSubmit={(e) => {
                 e.preventDefault();
                 setAdminLoginError('');
-                if (adminUsername === 'pixetechglobel' && adminPassword === 'meddemo4u') {
+                if (adminUsername === 'pixeltechglobel' && adminPassword === 'meddemo4u') {
                   setIsAdminAuthenticated(true);
                   setIsAdminLoginOpen(false);
                   setIsAdminOpen(true);

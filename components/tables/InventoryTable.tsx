@@ -52,6 +52,20 @@ export default function InventoryTable({
   React.useEffect(() => setMounted(true), []);
   const currentTime = mounted ? Date.now() : null;
 
+  // Auto-refresh expanded rows when inventory items change (e.g., after adding a batch)
+  React.useEffect(() => {
+    Object.keys(expandedMedIds).forEach(async (medId) => {
+      if (expandedMedIds[medId]) {
+        try {
+          const batches = await getMedicineBatches(medId);
+          setLoadedBatches(prev => ({ ...prev, [medId]: batches }));
+        } catch (e) {
+          console.error('Failed to auto-refresh batches:', e);
+        }
+      }
+    });
+  }, [items, expandedMedIds]);
+
   const filteredItems = useMemo(() => 
     items.filter(item => 
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

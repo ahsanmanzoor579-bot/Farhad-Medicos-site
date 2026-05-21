@@ -28,9 +28,26 @@ export async function getDashboardData() {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [totalMedicines, batchStats, todaySalesAgg] = await Promise.all([
+    const todaySalesDetails = await getTodaySalesDetails();
+    let dailySell = 0;
+    let dailyProfit = 0;
+    for (const item of todaySalesDetails) {
+      dailySell += item.revenue;
+      dailyProfit += item.profit;
+    }
+
+    const [totalMedicines, batchStats] = await Promise.all([
       medicinesCol.countDocuments(),
       batchesCol.aggregate([
+        {
+          $lookup: {
+            from: 'medicines',
+            localField: 'medicineId',
+            foreignField: '_id',
+            as: 'medicine'
+          }
+        },
+        { $unwind: { path: '$medicine', preserveNullAndEmptyArrays: true } },
         {
           $facet: {
             expired: [
@@ -42,14 +59,22 @@ export async function getDashboardData() {
               { $count: 'count' }
             ],
             stockValue: [
-              { $group: { _id: null, total: { $sum: { $multiply: ['$quantity', '$purchasePrice'] } } } }
+              {
+                $group: {
+                  _id: null,
+                  total: {
+                    $sum: {
+                      $multiply: [
+                        '$quantity',
+                        { $divide: ['$purchasePrice', { $cond: [{ $ifNull: ['$medicine.stripsPerBox', false] }, '$medicine.stripsPerBox', 1] }] }
+                      ]
+                    }
+                  }
+                }
+              }
             ]
           }
         }
-      ]).toArray(),
-      salesCol.aggregate([
-        { $match: { createdAt: { $gte: startOfDay.toISOString() } } },
-        { $group: { _id: null, totalSell: { $sum: '$total' } } }
       ]).toArray()
     ]);
 
@@ -60,8 +85,8 @@ export async function getDashboardData() {
       expiredCount: stats.expired?.[0]?.count || 0,
       shortExpiryCount: stats.shortExpiry?.[0]?.count || 0,
       lowStockCount: 0,
-      dailySell: todaySalesAgg[0]?.totalSell || 0,
-      dailyProfit: 0
+      dailySell,
+      dailyProfit
     };
   } catch (error) {
     console.error('Error in getDashboardData:', error);
