@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Upload, FileText, Database, CheckCircle2, AlertCircle, Download } from 'lucide-react';
 import { importPakistaniMedicines, importCustomMedicines } from '@/app/actions';
+import { useRouter } from 'next/navigation';
 
 export default function ImportDbModal({
   isOpen,
@@ -18,6 +19,7 @@ export default function ImportDbModal({
   const [parsedCount, setParsedCount] = useState<number | null>(null);
   const [pendingData, setPendingData] = useState<any[] | null>(null);
   const [fileName, setFileName] = useState<string>('');
+  const router = useRouter();
 
   if (!isOpen) return null;
 
@@ -27,6 +29,7 @@ export default function ImportDbModal({
     setSuccess(null);
     try {
       await importPakistaniMedicines();
+      router.refresh();
       setSuccess('Default Pakistani catalog imported successfully! All base medicines and standard initial batches have been loaded.');
       setTimeout(() => {
         onClose();
@@ -147,6 +150,7 @@ export default function ImportDbModal({
 
     try {
       await importCustomMedicines(pendingData);
+      router.refresh();
       setSuccess(`Success! Successfully imported ${pendingData.length} medicine records and stock into the database.`);
       setPendingData(null);
       setFileName('');

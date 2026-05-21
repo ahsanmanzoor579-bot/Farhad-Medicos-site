@@ -40,15 +40,9 @@ export default function PointOfSale({
   const categoriesList = ['All', ...Array.from(new Set(inventory.map(med => med.categoryName || 'General').filter(Boolean)))];
 
   // Compute unique out-of-stock and low-stock names
-  const outOfStockNames = Array.from(new Set(inventory.filter(med => {
-    const total = med.batches?.reduce((acc: number, b: any) => acc + b.quantity, 0) || 0;
-    return total === 0;
-  }).map(med => med.name)));
+  const outOfStockNames = Array.from(new Set(inventory.filter(med => med.totalStockUnits === 0).map(med => med.name)));
 
-  const lowStockNames = Array.from(new Set(inventory.filter(med => {
-    const total = med.batches?.reduce((acc: number, b: any) => acc + b.quantity, 0) || 0;
-    return total > 0 && total <= 3;
-  }).map(med => med.name)));
+  const lowStockNames = Array.from(new Set(inventory.filter(med => med.totalStockUnits > 0 && med.totalStockUnits <= 3).map(med => med.name)));
 
   // Available batches for POS (only items with stock)
   const availableItems = inventory.flatMap(med => {

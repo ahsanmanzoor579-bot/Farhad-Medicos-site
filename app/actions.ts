@@ -202,7 +202,17 @@ export async function getInventoryData() {
             totalStock: { $sum: '$quantity' },
             nearestExpiry: { $min: '$expiryDate' },
             latestPurchasePrice: { $last: '$purchasePrice' },
-            latestRetailPrice: { $last: '$retailPrice' }
+            latestRetailPrice: { $last: '$retailPrice' },
+            batches: {
+              $push: {
+                id: '$_id',
+                batchNumber: '$batchNumber',
+                expiryDate: '$expiryDate',
+                quantity: '$quantity',
+                purchasePrice: '$purchasePrice',
+                retailPrice: '$retailPrice'
+              }
+            }
           }
         }
       ]).toArray()
@@ -247,7 +257,7 @@ export async function getInventoryData() {
         boxPurchasePrice: purchasePrice,
         boxRetailPrice: retailPrice,
         profitMargin,
-        batches: []
+        batches: stats.batches || []
       };
     });
   } catch (error) {
