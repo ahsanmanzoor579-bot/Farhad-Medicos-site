@@ -1,26 +1,242 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc; /* light slate */
+  --foreground: #0f172a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f172a;
+    --foreground: #e2e8f0;
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.5);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.8);
+  border-radius: 8px;
+  border: 2px solid rgba(241, 245, 249, 0.5);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.9);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  ::-webkit-scrollbar-track {
+    background: rgba(30, 41, 59, 0.5);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(71, 85, 105, 0.8);
+    border-color: rgba(30, 41, 59, 0.5);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.9);
   }
 }
 
+/* Base resets & font settings */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+}
+
+/* ======= DARK MODE OVERRIDES ======= */
+@media (prefers-color-scheme: dark) {
+  /* Dashboard main container */
+  .min-h-screen.bg-slate-50\/60 {
+    background: #0f172a !important;
+  }
+
+  /* Cards, tables, modals — white backgrounds become dark */
+  .bg-white,
+  .bg-white\/70,
+  .bg-white\/90,
+  .bg-white\/95 {
+    background: #1e293b !important;
+    color: #e2e8f0 !important;
+  }
+
+  /* Glassmorphic panels */
+  .bg-white\/70.backdrop-blur-sm {
+    background: rgba(30, 41, 59, 0.85) !important;
+    border-color: rgba(51, 65, 85, 0.5) !important;
+  }
+
+  /* Table headers and rows */
+  .bg-slate-50\/50,
+  .bg-slate-50,
+  .bg-slate-50\/30,
+  .bg-slate-50\/20 {
+    background: rgba(30, 41, 59, 0.5) !important;
+  }
+
+  /* Text colors */
+  .text-slate-800,
+  .text-slate-900 {
+    color: #e2e8f0 !important;
+  }
+  .text-slate-700 {
+    color: #cbd5e1 !important;
+  }
+  .text-slate-600 {
+    color: #94a3b8 !important;
+  }
+  .text-slate-500 {
+    color: #64748b !important;
+  }
+
+  /* Borders */
+  .border-slate-100,
+  .border-slate-200,
+  .border-slate-200\/50,
+  .border-white\/60,
+  .border-white\/50 {
+    border-color: rgba(51, 65, 85, 0.6) !important;
+  }
+
+  /* Input fields */
+  input[type="text"],
+  input[type="password"],
+  input[type="search"],
+  input[type="number"],
+  select,
+  textarea {
+    background: #1e293b !important;
+    color: #e2e8f0 !important;
+    border-color: #334155 !important;
+    caret-color: #e2e8f0 !important;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #64748b !important;
+  }
+
+  /* Shadows become darker */
+  .shadow-lg,
+  .shadow-md,
+  .shadow-sm,
+  .shadow-2xl {
+    --tw-shadow-color: rgba(0, 0, 0, 0.3);
+  }
+
+  /* Modal overlays — slightly darker */
+  .bg-slate-900\/60 {
+    background: rgba(2, 6, 23, 0.75) !important;
+  }
+
+  /* Stat cards backgrounds */
+  .bg-gradient-to-r.from-slate-100.to-slate-200 {
+    background: linear-gradient(to right, #1e293b, #334155) !important;
+  }
+
+  /* Pagination active button */
+  .bg-teal-500.text-white {
+    background: #0d9488 !important;
+  }
+}
+
+/* Modern styling utility tokens */
+.bg-glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.bg-glass-dark {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .bg-glass {
+    background: rgba(30, 41, 59, 0.75);
+    border-color: rgba(51, 65, 85, 0.4);
+  }
+}
+
+/* Premium Animations */
+@keyframes drift-blob-1 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+}
+
+@keyframes drift-blob-2 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  50% {
+    transform: translate(-40px, 40px) scale(1.15);
+  }
+}
+
+.animate-blob-1 {
+  animation: drift-blob-1 15s infinite ease-in-out;
+}
+
+.animate-blob-2 {
+  animation: drift-blob-2 18s infinite ease-in-out;
+}
+
+/* Pulsing stock/dot indicators */
+@keyframes status-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.6;
+  }
+}
+
+.animate-pulse-indicator {
+  animation: status-pulse 2s infinite ease-in-out;
+}
+
+/* POS Cart Add Effect */
+@keyframes add-to-cart-shake {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.animate-add-cart {
+  animation: add-to-cart-shake 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Horizontal pills scroll hide scrollbar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

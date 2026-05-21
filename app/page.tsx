@@ -1,6 +1,5 @@
 import Dashboard from '@/components/dashboard/Dashboard';
 import { getDashboardData, getInventoryData, getCategories, getTodaySalesDetails } from './actions';
-import { connectToDatabase } from '@/lib/mongodb';
 import { Database, AlertTriangle, Terminal, HelpCircle } from 'lucide-react';
 
 // Disable page static cache caching to always get real-time MongoDB data on reload
@@ -9,7 +8,6 @@ export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   try {
-    const { db } = await connectToDatabase();
     
     const [stats, inventory, categories, todaySales] = await Promise.all([
       getDashboardData(),
@@ -18,61 +16,12 @@ export default async function Home() {
       getTodaySalesDetails()
     ]);
 
-    // Calculate alerts dynamically on the server
-    const now = new Date();
-    const sixMonthsFromNow = new Date();
-    sixMonthsFromNow.setDate(now.getDate() + 180);
-
-    const batchesCol = db.collection<any>('batches');
-    const medicinesCol = db.collection<any>('medicines');
-
-    const allBatches = await batchesCol.find({}).toArray();
-    const allMedicines = await medicinesCol.find({}).toArray();
-
-    const medicinesMap = allMedicines.reduce((acc: any, med: any) => {
-      acc[med._id] = med;
-      return acc;
-    }, {});
-
-    const urgentBatches = allBatches
-      .filter((b: any) => {
-        const expiry = new Date(b.expiryDate);
-        return expiry <= sixMonthsFromNow;
-      })
-      .map((b: any) => {
-        const med = medicinesMap[b.medicineId] || { name: 'Unknown' };
-        return {
-          id: b._id,
-          medicineName: med.name,
-          batchNumber: b.batchNumber,
-          expiryDate: new Date(b.expiryDate)
-        };
-      });
-
-    const stockMap = new Map<string, number>();
-    for (const b of allBatches as any[]) {
-      stockMap.set(b.medicineId, (stockMap.get(b.medicineId) || 0) + b.quantity);
-    }
-
-    const lowStockAlerts = allMedicines
-      .filter((med: any) => {
-        const stock = stockMap.get(med._id) || 0;
-        return stock < 2; // low stock if less than 2 smallest units/strips
-      })
-      .map((med: any, index: number) => ({
-        id: `ls-${index}`,
-        medicineName: med.name,
-        quantity: stockMap.get(med._id) || 0
-      }));
-
     return (
       <main>
         <Dashboard 
           stats={stats} 
           inventory={inventory} 
           categories={categories}
-          urgentBatches={urgentBatches}
-          lowStockAlerts={lowStockAlerts}
           todaySales={todaySales}
         />
       </main>

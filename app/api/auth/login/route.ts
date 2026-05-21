@@ -4,7 +4,7 @@ export async function POST(request: Request) {
   try {
     const { username, password } = await request.json();
 
-    // Allow admin credentials to be provided via environment variables
+    // Main login credentials
     const ADMIN_USER = process.env.ADMIN_USER || 'admin';
     const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'password123';
 

@@ -24,9 +24,23 @@ export default function StatsBanner({
   
   const getCardClass = (mode: string, baseGradient: string, shadowColor: string) => {
     const isActive = filterMode === mode;
-    return `relative overflow-hidden ${baseGradient} p-6 rounded-3xl shadow-lg ${shadowColor} text-white transform transition-all duration-300 cursor-pointer ${
-      isActive ? 'ring-4 ring-white ring-offset-2 scale-105 shadow-2xl' : 'hover:-translate-y-1 hover:shadow-xl opacity-90 hover:opacity-100'
+    return `relative overflow-hidden ${baseGradient} p-6 rounded-3xl shadow-lg ${shadowColor} text-white transform transition-all duration-300 cursor-pointer select-none border border-transparent ${
+      isActive ? 'scale-[1.03] shadow-2xl opacity-100 border-white/40' : 'hover:-translate-y-0.5 hover:shadow-xl opacity-85 hover:opacity-100'
     }`;
+  };
+
+  const renderCardHeader = (title: string, mode: string, textColorClass: string) => {
+    const isActive = filterMode === mode;
+    return (
+      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+        <p className={`${textColorClass} font-semibold text-xs uppercase tracking-wider`}>{title}</p>
+        {isActive && (
+          <span className="text-[9px] font-black uppercase tracking-widest bg-white/20 text-white px-2 py-0.5 rounded-full border border-white/25 shadow-sm animate-pulse-indicator">
+            Active
+          </span>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -40,7 +54,7 @@ export default function StatsBanner({
         <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-white opacity-10 pointer-events-none blur-2xl"></div>
         <div className="flex items-center justify-between relative z-10">
           <div>
-            <p className="text-blue-100 font-medium">Unique Medicines</p>
+            {renderCardHeader('Unique Medicines', 'all', 'text-blue-100')}
             <h3 className="text-3xl font-extrabold mt-1 tracking-tight">{totalUniqueMedicines}</h3>
           </div>
           <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
@@ -56,7 +70,7 @@ export default function StatsBanner({
         <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-white opacity-10 pointer-events-none blur-2xl"></div>
         <div className="flex items-center justify-between relative z-10">
           <div>
-            <p className="text-orange-50 font-medium">Short Expiry Alerts</p>
+            {renderCardHeader('Short Expiry Alerts', 'short-expiry', 'text-orange-50')}
             <h3 className="text-3xl font-extrabold mt-1 tracking-tight">{shortExpiryCount}</h3>
           </div>
           <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
@@ -72,7 +86,7 @@ export default function StatsBanner({
         <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-white opacity-10 pointer-events-none blur-2xl"></div>
         <div className="flex items-center justify-between relative z-10">
           <div>
-            <p className="text-red-50 font-medium">Low Stock Alerts</p>
+            {renderCardHeader('Low Stock Alerts', 'low-stock', 'text-red-50')}
             <h3 className="text-3xl font-extrabold mt-1 tracking-tight">{lowStockCount}</h3>
           </div>
           <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
@@ -89,7 +103,7 @@ export default function StatsBanner({
         <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-white opacity-10 pointer-events-none blur-2xl"></div>
         <div className="flex items-center justify-between relative z-10">
           <div>
-            <p className="text-slate-300 font-medium">Total Stock Value</p>
+            {renderCardHeader('Total Stock Value', 'total-stock', 'text-slate-300')}
             <h3 className="text-3xl font-extrabold mt-1 tracking-tight">Rs. {totalStockValue.toFixed(2)}</h3>
           </div>
           <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
@@ -105,7 +119,7 @@ export default function StatsBanner({
         <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-white opacity-10 pointer-events-none blur-2xl"></div>
         <div className="flex items-center justify-between relative z-10">
           <div>
-            <p className="text-emerald-50 font-medium">Daily Sell (Today)</p>
+            {renderCardHeader('Daily Sell (Today)', 'sold-today', 'text-emerald-50')}
             <h3 className="text-3xl font-extrabold mt-1 tracking-tight">Rs. {dailySell.toFixed(2)}</h3>
           </div>
           <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
@@ -121,7 +135,7 @@ export default function StatsBanner({
         <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-white opacity-10 pointer-events-none blur-2xl"></div>
         <div className="flex items-center justify-between relative z-10">
           <div>
-            <p className="text-purple-100 font-medium">Daily Profit (Today)</p>
+            {renderCardHeader('Daily Profit (Today)', 'sold-today', 'text-purple-100')}
             <h3 className="text-3xl font-extrabold mt-1 tracking-tight">Rs. {dailyProfit.toFixed(2)}</h3>
           </div>
           <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">

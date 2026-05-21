@@ -9,11 +9,13 @@ import ReceiptPrinter from './ReceiptPrinter';
 export default function PointOfSale({
   isOpen,
   onClose,
-  inventory
+  inventory,
+  posQuickCashNotes = ['50', '100', '500', '1000', '5000']
 }: {
   isOpen: boolean;
   onClose: () => void;
   inventory: any[];
+  posQuickCashNotes?: string[];
 }) {
   const [cart, setCart] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,8 +31,13 @@ export default function PointOfSale({
   const [pendingItem, setPendingItem] = useState<any | null>(null);
   const [stripInput, setStripInput] = useState('1');
   const [pendingUnit, setPendingUnit] = useState<'BOX' | 'STRIP'>('STRIP');
+  const [batchSelectionItem, setBatchSelectionItem] = useState<{ medName: string; batches: any[] } | null>(null);
+  const [activeCategory, setActiveCategory] = useState('All');
   
   const receiptRef = useRef<HTMLDivElement>(null);
+
+  // Extract category names dynamically from inventory
+  const categoriesList = ['All', ...Array.from(new Set(inventory.map(med => med.categoryName || 'General').filter(Boolean)))];
 
   // Compute unique out-of-stock and low-stock names
   const outOfStockNames = Array.from(new Set(inventory.filter(med => {
@@ -67,6 +74,7 @@ export default function PointOfSale({
         ...med,
         batchId: b.id,
         batchNumber: b.batchNumber,
+        expiryDate: b.expiryDate,
         // batchQuantity is total smallest-units (strips)
         batchQuantity: b.quantity,
         batchPrice: stripPrice,
@@ -78,11 +86,14 @@ export default function PointOfSale({
     });
   });
 
-  const filteredItems = availableItems.filter(item => 
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.genericFormula.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.barcode && item.barcode.includes(searchTerm))
-  );
+  const filteredItems = availableItems.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.genericFormula.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.barcode && item.barcode.includes(searchTerm));
+    
+    if (activeCategory === 'All') return matchesSearch;
+    return matchesSearch && item.categoryName === activeCategory;
+  });
 
   const addToCart = useCallback((item: any) => {
     if (item.batchQuantity <= 0) {
@@ -112,6 +123,21 @@ export default function PointOfSale({
     setPendingUnit(item.defaultSellingUnit === 'BOX' ? 'BOX' : 'STRIP');
   }, [cart]);
 
+  const handleBarcodeAdd = useCallback((barcode: string) => {
+    const matches = availableItems.filter(i => i.barcode === barcode && i.batchQuantity > 0);
+    if (matches.length === 0) {
+      setAlertMessage(`No active stock found for scanned barcode: ${barcode}`);
+      return;
+    }
+    
+    const uniquePrices = Array.from(new Set(matches.map(m => m.boxPrice)));
+    if (matches.length > 1 && uniquePrices.length > 1) {
+      setBatchSelectionItem({ medName: matches[0].name, batches: matches });
+    } else {
+      addToCart(matches[0]);
+    }
+  }, [availableItems, addToCart]);
+
   // USB Barcode Scanner Listener
   useEffect(() => {
     if (!isOpen) return;
@@ -120,15 +146,9 @@ export default function PointOfSale({
       // Ignore if user is typing in the search input directly, unless it's a very fast scanner input.
       // But for safety, we just capture fast inputs anywhere or if Enter is pressed after some chars.
       if (e.key === 'Enter') {
-          if (barcodeBuffer.length > 3) {
-          // Find item by barcode
-          const found = availableItems.find(i => i.barcode === barcodeBuffer);
-          if (found) {
-            addToCart(found);
-            setSearchTerm(''); // clear search if they happened to focus it
-          } else {
-            // Optional: alert not found
-          }
+        if (barcodeBuffer.length > 3) {
+          handleBarcodeAdd(barcodeBuffer);
+          setSearchTerm(''); // clear search if they happened to focus it
         }
         setBarcodeBuffer('');
       } else if (e.key.length === 1) { // Normal character
@@ -149,23 +169,22 @@ export default function PointOfSale({
       window.removeEventListener('keydown', handleKeyDown);
       clearTimeout(timeout);
     };
-  }, [isOpen, barcodeBuffer, availableItems, addToCart]);
+  }, [isOpen, barcodeBuffer, handleBarcodeAdd]);
 
   const removeFromCart = (batchId: string) => {
     setCart(prev => prev.filter(i => i.batchId !== batchId));
   };
 
   const handlePosScan = (barcode: string, mode: 'add' | 'remove') => {
-    const found = availableItems.find(i => i.barcode === barcode);
-    if (!found) {
-      setAlertMessage(`Barcode ${barcode} not found in inventory!`);
-      return;
-    }
-
     if (mode === 'add') {
-      addToCart(found);
+      handleBarcodeAdd(barcode);
     } else {
-      removeFromCart(found.batchId);
+      const cartItem = cart.find(i => i.barcode === barcode);
+      if (cartItem) {
+        removeFromCart(cartItem.batchId);
+      } else {
+        setAlertMessage(`No matching item in cart to remove!`);
+      }
     }
   };
 
@@ -272,13 +291,23 @@ export default function PointOfSale({
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && searchTerm.trim().length > 0) {
-                      // Try to match barcode or exact name
-                      const found = availableItems.find(i => 
-                        i.barcode === searchTerm.trim() || 
-                        i.name.toLowerCase() === searchTerm.trim().toLowerCase()
+                      const term = searchTerm.trim().toLowerCase();
+                      const matches = availableItems.filter(i => 
+                        (i.barcode === searchTerm.trim() || i.name.toLowerCase() === term) && 
+                        i.batchQuantity > 0
                       );
-                      if (found) {
-                        addToCart(found);
+                      
+                      if (matches.length === 0) {
+                        setAlertMessage(`No active stock found for "${searchTerm.trim()}".`);
+                        return;
+                      }
+                      
+                      const uniquePrices = Array.from(new Set(matches.map(m => m.boxPrice)));
+                      if (matches.length > 1 && uniquePrices.length > 1) {
+                        setBatchSelectionItem({ medName: matches[0].name, batches: matches });
+                        setSearchTerm('');
+                      } else {
+                        addToCart(matches[0]);
                         setSearchTerm('');
                       }
                     }
@@ -295,7 +324,32 @@ export default function PointOfSale({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 flex flex-col space-y-4">
+              {/* Dynamic Horizontal Category Pills */}
+              <div className="flex gap-2 overflow-x-auto pb-3 pt-1 px-1 no-scrollbar flex-shrink-0">
+                {categoriesList.map((cat) => {
+                  const isActive = activeCategory === cat;
+                  const itemCount = availableItems.filter(i => (cat === 'All' || i.categoryName === cat) && i.batchQuantity > 0).length;
+                  
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      className={`px-4 py-2 rounded-full font-bold text-xs whitespace-nowrap shadow-sm border transition-all transform active:scale-95 flex items-center gap-1.5 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-teal-500 to-blue-600 text-white border-transparent shadow-teal-500/10'
+                          : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200/80 hover:border-slate-300'
+                      }`}
+                    >
+                      <span>{cat === 'All' ? '💊 All' : cat}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                        {itemCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {filteredItems.map(item => (
                   <div 
@@ -417,6 +471,44 @@ export default function PointOfSale({
                   placeholder="0.00"
                 />
               </div>
+
+              {/* Quick Cash Pakistani Rupee Notes Keypad */}
+              <div className="py-2.5 border-y border-dashed border-slate-200/80 space-y-1.5 flex-shrink-0">
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Quick Cash Tenders</div>
+                <div className="flex flex-wrap gap-1">
+                  {posQuickCashNotes.map((noteStr) => {
+                    const note = Number(noteStr);
+                    if (isNaN(note)) return null;
+                    return (
+                      <button
+                        key={noteStr}
+                        onClick={() => {
+                          const current = Number(tenderedAmount) || 0;
+                          setTenderedAmount(String(current + note));
+                        }}
+                        className="flex-1 min-w-[60px] text-center py-1 bg-slate-50 border border-slate-200/80 hover:bg-emerald-50 hover:border-emerald-200/60 rounded-lg font-bold text-slate-700 text-xs transition-colors shadow-sm transform active:scale-95 cursor-pointer"
+                      >
+                        +{note}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-1.5 pt-0.5">
+                  <button
+                    onClick={() => setTenderedAmount(total.toFixed(2))}
+                    className="flex-1 py-1 bg-teal-50 border border-teal-200 hover:bg-teal-100 rounded-lg font-black text-teal-800 text-[10px] uppercase tracking-wider transition-colors shadow-sm transform active:scale-95 cursor-pointer"
+                  >
+                    Exact Cash
+                  </button>
+                  <button
+                    onClick={() => setTenderedAmount('')}
+                    className="py-1 px-3 bg-red-50 border border-red-200 hover:bg-red-100 rounded-lg font-bold text-red-700 text-[10px] uppercase tracking-wider transition-colors shadow-sm transform active:scale-95 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-500 font-bold uppercase tracking-wider">Change</span>
                 <span className="font-extrabold text-emerald-600 text-sm">Rs. {changeDue.toFixed(2)}</span>
@@ -597,6 +689,115 @@ export default function PointOfSale({
               <button
                 onClick={() => setListModalContent(null)}
                 className="w-full py-3.5 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white rounded-xl font-bold text-lg shadow-lg shadow-slate-900/20 transform transition-all hover:-translate-y-0.5 active:translate-y-0"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Selection Modal for Multi-Price Batches */}
+      {batchSelectionItem && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[120] flex items-center justify-center p-4 print:hidden animate-in fade-in duration-200">
+          <div className="bg-white/80 backdrop-blur-xl w-full max-w-lg rounded-[2rem] border border-white/40 shadow-2xl overflow-hidden transform transition-all scale-100 animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+            <div className="p-6 text-center border-b border-slate-200/50 bg-gradient-to-r from-teal-500/10 to-blue-500/10 flex-shrink-0 relative">
+              <button 
+                onClick={() => setBatchSelectionItem(null)}
+                className="absolute right-6 top-6 text-slate-400 hover:text-slate-600 bg-white/50 hover:bg-white p-2 rounded-full transition-all border border-slate-200/50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="w-16 h-16 bg-gradient-to-tr from-teal-500 to-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-teal-500/20 transform rotate-3">
+                <ScanBarcode className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-2xl font-black text-slate-800 tracking-tight">Multiple Batches Found</h3>
+              <p className="text-slate-500 font-semibold mt-1">
+                Select active batch for <span className="text-teal-600 font-bold">{batchSelectionItem.medName}</span>
+              </p>
+            </div>
+                        <div className="p-6 overflow-y-auto bg-slate-50/50 flex-1 space-y-4">
+              {(() => {
+                const nonExpired = batchSelectionItem.batches.filter(b => {
+                  if (!b.expiryDate) return false;
+                  return new Date(b.expiryDate).getTime() > Date.now();
+                });
+                const earliestBatchId = nonExpired.length > 0
+                  ? [...nonExpired].sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime())[0].batchId
+                  : null;
+
+                return batchSelectionItem.batches.map((batch) => {
+                  const isNearExpiry = batch.expiryDate && (new Date(batch.expiryDate).getTime() - Date.now() < 90 * 24 * 60 * 60 * 1000);
+                  const isExpired = batch.expiryDate && (new Date(batch.expiryDate).getTime() < Date.now());
+                  const isRecommended = batch.batchId === earliestBatchId;
+                  const formattedExpiry = batch.expiryDate 
+                    ? new Date(batch.expiryDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                    : 'N/A';
+                  
+                  return (
+                    <div 
+                      key={batch.batchId}
+                      onClick={() => {
+                        addToCart(batch);
+                        setBatchSelectionItem(null);
+                      }}
+                      className={`group p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex justify-between items-center relative overflow-hidden ${
+                        isRecommended 
+                          ? 'bg-gradient-to-r from-teal-500/5 to-emerald-500/5 hover:from-teal-500/10 hover:to-emerald-500/10 border-teal-500/40 hover:border-teal-500 shadow-md shadow-teal-500/5' 
+                          : 'bg-white/70 hover:bg-white border-slate-200/60 hover:border-teal-500 shadow-sm hover:shadow-md'
+                      }`}
+                    >
+                      <div className={`absolute top-0 left-0 w-1.5 h-full transition-opacity ${isRecommended ? 'bg-teal-500 opacity-100' : 'bg-slate-400 opacity-0 group-hover:opacity-100'}`}></div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-extrabold text-[10px] px-2.5 py-1 rounded-lg border tracking-wider transition-colors ${
+                            isRecommended
+                              ? 'bg-teal-50 border-teal-200/50 text-teal-700'
+                              : 'bg-slate-100 border-slate-200/40 text-slate-700 group-hover:bg-teal-50 group-hover:text-teal-700'
+                          }`}>
+                            BATCH: {batch.batchNumber}
+                          </span>
+                          {isRecommended && (
+                            <span className="bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-extrabold text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm shadow-teal-500/20">
+                              FIFO Sell First
+                            </span>
+                          )}
+                          {isExpired ? (
+                            <span className="bg-red-100 text-red-700 font-bold text-[10px] px-2 py-0.5 rounded-md uppercase">Expired</span>
+                          ) : isNearExpiry ? (
+                            <span className="bg-orange-100 text-orange-700 font-bold text-[10px] px-2 py-0.5 rounded-md uppercase">Near Expiry</span>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                          <span>Expiry:</span>
+                          <span className={`font-semibold ${isExpired ? 'text-red-600' : isNearExpiry ? 'text-orange-600' : 'text-slate-700'}`}>
+                            {formattedExpiry}
+                          </span>
+                        </div>
+                        <div className="text-xs font-semibold text-slate-600">
+                          Available Stock: <span className="text-slate-800 font-extrabold">{batch.batchQuantity} strips</span>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right space-y-1">
+                        <div className="text-xs font-semibold text-slate-400">Retail Price</div>
+                        <div className="text-lg font-black text-slate-800 group-hover:text-teal-600 transition-colors">
+                          Rs. {batch.boxPrice.toFixed(2)} <span className="text-xs font-medium text-slate-500">/box</span>
+                        </div>
+                        <div className="text-xs font-bold text-slate-500">
+                          Rs. {batch.batchPrice.toFixed(2)} <span className="text-[10px] font-normal text-slate-400">/strip</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div className="p-4 bg-white border-t border-slate-200/50 flex-shrink-0 flex gap-3">
+              <button
+                onClick={() => setBatchSelectionItem(null)}
+                className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-base transition-all border border-slate-200"
               >
                 Close
               </button>
