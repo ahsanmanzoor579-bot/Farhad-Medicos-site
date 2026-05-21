@@ -87,7 +87,7 @@ export default function PointOfSale({
     
     if (activeCategory === 'All') return matchesSearch;
     return matchesSearch && item.categoryName === activeCategory;
-  });
+  }).slice(0, 50);
 
   const addToCart = useCallback((item: any) => {
     if (item.batchQuantity <= 0) {
