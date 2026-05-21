@@ -830,26 +830,7 @@ export async function importPakistaniMedicines() {
         createdAt: now.toISOString()
       });
 
-      let expiryDate: Date;
-      const rand = Math.random();
-      if (rand < 0.03) {
-        expiryDate = new Date(now.getTime() - Math.floor(Math.random() * 90) * 24 * 60 * 60 * 1000);
-      } else if (rand < 0.10) {
-        expiryDate = new Date(now.getTime() + Math.floor(30 + Math.random() * 150) * 24 * 60 * 60 * 1000);
-      } else {
-        expiryDate = new Date(now.getTime() + Math.floor(180 + Math.random() * 900) * 24 * 60 * 60 * 1000);
-      }
-
-      batchesList.push({
-        _id: randomUUID(),
-        medicineId: medId,
-        batchNumber: `PK-${String(1000 + count).padStart(6, '0')}`,
-        expiryDate: expiryDate.toISOString(),
-        purchasePrice: basePurchasePrice,
-        retailPrice,
-        quantity: 10 + Math.floor(Math.random() * 500),
-        createdAt: now.toISOString()
-      });
+      // Removed batch generation to keep inventory catalog purely empty of stock
 
       count++;
     }
@@ -858,9 +839,7 @@ export async function importPakistaniMedicines() {
     const chunkSize = 2500;
     for (let i = 0; i < medicinesList.length; i += chunkSize) {
       const medChunk = medicinesList.slice(i, i + chunkSize);
-      const batchChunk = batchesList.slice(i, i + chunkSize);
       await medicinesCol.insertMany(medChunk);
-      await batchesCol.insertMany(batchChunk);
     }
 
     revalidatePath('/');

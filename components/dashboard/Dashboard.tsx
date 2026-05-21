@@ -795,8 +795,7 @@ export default function Dashboard({ stats, inventory, categories, todaySales }: 
                       try {
                         await clearAllSystemData();
                         alert('System database wiped successfully. All values are now zero!');
-                        setIsAdminOpen(false);
-                        setIsAdminAuthenticated(false);
+                        window.location.reload();
                       } catch (err: any) {
                         alert(err.message || 'Wipe failed.');
                       }
