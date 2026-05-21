@@ -36,8 +36,8 @@ export default function Dashboard({ stats, inventory, categories, todaySales }: 
   const [adminLoginError, setAdminLoginError] = useState('');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [isOverrideEnabled, setIsOverrideEnabled] = useState(true);
-  const [overrideStatsToZero, setOverrideStatsToZero] = useState(true);
+  const [isOverrideEnabled, setIsOverrideEnabled] = useState(false);
+  const [overrideStatsToZero, setOverrideStatsToZero] = useState(false);
   const [customStats, setCustomStats] = useState({
     uniqueMedicines: '0',
     shortExpiry: '0',
